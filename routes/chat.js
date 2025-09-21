@@ -1,26 +1,58 @@
 "use strict";
 
-module.exports = async function (fastify, opts) {
+const { getHandler } = require("../handlers");
+const { parseMessage, sendError } = require("./chat/message-utils");
+
+module.exports = async function (fastify) {
   fastify.get(
     "/chat",
     {
       websocket: true,
     },
     (socket, req) => {
-      console.log("Client connected");
-      console.log(socket);
-      socket.on("message", (_message) => {
-        const message = _message.toString("utf8");
-        if (message === "ping") {
-          socket.send("pong");
-        } else {
-          console.log(`Client message: ${message}`);
-          socket.send(message.toString("utf8"));
+      fastify.log.info({ address: req.ip }, "Client connected");
+
+      socket.on("message", async (rawMessage) => {
+        const parsed = parseMessage(rawMessage);
+        if (parsed.error) {
+          sendError(socket, "bad_request", parsed.error);
+          return;
+        }
+
+        const handler = getHandler(parsed.type);
+        if (!handler) {
+          sendError(
+            socket,
+            "unknown_type",
+            `Unsupported message type: ${parsed.type}`,
+          );
+          return;
+        }
+
+        try {
+          await handler({
+            socket,
+            data: parsed.data,
+            meta: parsed.meta,
+            fastify,
+            req,
+          });
+        } catch (error) {
+          fastify.log.error(error, "WebSocket handler failed");
+          sendError(
+            socket,
+            "internal_error",
+            "Unexpected error while processing message",
+          );
         }
       });
-      // Client disconnect
+
       socket.on("close", () => {
-        console.log("Client disconnected");
+        fastify.log.info({ address: req.ip }, "Client disconnected");
+      });
+
+      socket.on("error", (error) => {
+        fastify.log.error(error, "WebSocket connection error");
       });
     },
   );
