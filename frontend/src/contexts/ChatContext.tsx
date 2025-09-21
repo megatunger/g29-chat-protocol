@@ -25,7 +25,7 @@ type ChatContextValue = {
 const ChatContext = createContext<ChatContextValue | null>(null);
 
 const ChatProvider = ({ children }: PropsWithChildren) => {
-  const { lastMessage, readyState, sendMessage } = useWebSocket(endpoint, {
+  const { lastMessage, readyState, sendJsonMessage } = useWebSocket(endpoint, {
     // heartbeat: {
     //   interval: 5000,
     // },
@@ -70,13 +70,18 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
         return false;
       }
 
-      const result = sendMessage(trimmed, keep);
+      const result = sendJsonMessage(
+        {
+          message: message,
+        },
+        keep,
+      );
       if (result) {
         appendMessage("outgoing", trimmed);
       }
       return result;
     },
-    [appendMessage, sendMessage],
+    [appendMessage],
   );
 
   useEffect(() => {
