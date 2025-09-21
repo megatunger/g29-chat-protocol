@@ -9,9 +9,14 @@ module.exports = async function (fastify, opts) {
     (socket, req) => {
       console.log("Client connected");
       console.log(socket);
-      socket.on("message", (message) => {
-        console.log(`Client message: ${message}`);
-        socket.send(message.toString("utf8"));
+      socket.on("message", (_message) => {
+        const message = _message.toString("utf8");
+        if (message === "ping") {
+          socket.send("pong");
+        } else {
+          console.log(`Client message: ${message}`);
+          socket.send(message.toString("utf8"));
+        }
       });
       // Client disconnect
       socket.on("close", () => {
