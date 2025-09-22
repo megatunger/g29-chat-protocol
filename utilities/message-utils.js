@@ -29,12 +29,11 @@ function parseMessage(raw) {
       return { error: "Missing message type" };
     }
     return {
-      type: parsed.type,
-      data: parsed.data ?? null,
-      meta: {
-        raw,
-        source: "json",
-      },
+      ...parsed,
+      // meta: {
+      //   raw,
+      //   source: "json",
+      // },
     };
   } catch (_error) {
     if (payload === "ping") {
@@ -42,7 +41,6 @@ function parseMessage(raw) {
         type: "ping",
         data: null,
         meta: {
-          raw,
           source: "legacy",
         },
       };
@@ -69,26 +67,27 @@ function send(socket, message) {
     return;
   }
 
-  socket.send(JSON.stringify(message));
-}
-
-function sendTyped(socket, type, data) {
-  send(socket, {
-    type,
-    data,
-  });
+  socket.send(
+    JSON.stringify({
+      ...message,
+      ts: Date.now(),
+    }),
+  );
 }
 
 function sendError(socket, code, message) {
-  sendTyped(socket, "error", {
-    code,
-    message,
+  send(socket, {
+    type: "ERROR",
+    ts: Date.now(),
+    payload: {
+      code,
+      detail: message,
+    },
   });
 }
 
 module.exports = {
   parseMessage,
   send,
-  sendTyped,
   sendError,
 };
