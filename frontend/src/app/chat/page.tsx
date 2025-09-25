@@ -1,5 +1,5 @@
-import { KeyProvider, useKeys } from "@/contexts/KeyContext";
-import { ChatProvider, useChat } from "@/contexts/ChatContext";
+import { useKeys } from "@/contexts/KeyContext";
+import { useChat } from "@/contexts/ChatContext";
 import { Button } from "@/components/ui/button";
 import KeyManagementPanel from "@/components/common/KeyManagementPanel";
 import ChatMessageList from "@/components/common/ChatMessageList";
@@ -95,12 +95,4 @@ const ChatPage = () => {
   );
 };
 
-export default function ChatPage() {
-  return (
-    <KeyProvider>
-      <ChatProvider>
-        <ChatPage />
-      </ChatProvider>
-    </KeyProvider>
-  );
-}
+export default ChatPage;
