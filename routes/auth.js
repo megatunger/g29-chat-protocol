@@ -4,23 +4,10 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 
-const JWT_SECRET = pro  fastify.post('/api/auth/login', async (request, reply) => {
-    const { username, password } = request.body;
-    
-    // DEBUG: Log what we received
-    console.log('🔍 Login attempt - Username:', username, 'Password length:', password?.length);
-
-    if (!username || !password) {
-      return reply.status(400).send({
-        error: 'bad_request',
-        message: 'Username and password are required'
-      });
-    }JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
 const BCRYPT_ROUNDS = 12;
 
-
 const users = new Map([
-
   ["varun", {
     userID: "varun-uuid-123",
     username: "varun",
@@ -31,23 +18,15 @@ const users = new Map([
     createdAt: new Date(),
     lastLogin: null
   }],
-
 ]);
-
 
 const activeSessions = new Map();
 
 module.exports = async function (fastify) {
-
   fastify.post('/api/auth/login', async (request, reply) => {
     const { username, password } = request.body;
-    
-    // Debug logging
-    console.log('🔍 Login attempt:', { username, password: '***' });
-    console.log('🗄️ Available users:', Array.from(users.keys()));
 
     if (!username || !password) {
-      console.log('❌ Missing credentials');
       return reply.status(400).send({
         error: 'bad_request',
         message: 'Username and password are required'
