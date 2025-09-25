@@ -1,7 +1,7 @@
 "use strict";
 
 const { getHandler } = require("../handlers");
-const { parseMessage, sendError } = require("./chat/message-utils");
+const { parseMessage, sendError } = require("../utilities/message-utils");
 
 module.exports = async function (fastify) {
   fastify.get(
@@ -23,7 +23,7 @@ module.exports = async function (fastify) {
         if (!handler) {
           sendError(
             socket,
-            "unknown_type",
+            "UNKNOWN_TYPE",
             `Unsupported message type: ${parsed.type}`,
           );
           return;
@@ -32,7 +32,7 @@ module.exports = async function (fastify) {
         try {
           await handler({
             socket,
-            data: parsed.data,
+            data: parsed,
             meta: parsed.meta,
             fastify,
             req,
@@ -41,8 +41,10 @@ module.exports = async function (fastify) {
           fastify.log.error(error, "WebSocket handler failed");
           sendError(
             socket,
-            "internal_error",
-            "Unexpected error while processing message",
+            "INTERNAL_ERROR",
+            error?.message ||
+              error?.toString() ||
+              "Unexpected error while processing message",
           );
         }
       });

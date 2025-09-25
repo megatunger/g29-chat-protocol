@@ -1,6 +1,6 @@
 "use strict";
 
-const { send, sendTyped } = require("../routes/chat/message-utils");
+const { send } = require("../utilities/message-utils");
 
 module.exports = async function handleText({ socket, data, meta }) {
   if (meta && meta.source === "legacy") {
@@ -8,7 +8,8 @@ module.exports = async function handleText({ socket, data, meta }) {
     return;
   }
 
-  sendTyped(socket, "text", {
+  send(socket, {
+    type: "text",
     echo: data,
   });
 };

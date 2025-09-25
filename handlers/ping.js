@@ -1,6 +1,6 @@
 "use strict";
 
-const { send, sendTyped } = require("../routes/chat/message-utils");
+const { send } = require("../utilities/message-utils");
 
 module.exports = async function handlePing({ socket, meta }) {
   if (meta && meta.source === "legacy") {
@@ -8,5 +8,5 @@ module.exports = async function handlePing({ socket, meta }) {
     return;
   }
 
-  sendTyped(socket, "pong", { timestamp: Date.now() });
+  send(socket, "pong");
 };
