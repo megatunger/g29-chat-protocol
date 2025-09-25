@@ -1,9 +1,16 @@
 "use client";
 
-import {createContext, PropsWithChildren, useCallback, useContext, useMemo,} from "react";
-import useWebSocket from "react-use-websocket";
+import {
+  createContext,
+  PropsWithChildren,
+  useCallback,
+  useContext,
+  useMemo,
+} from "react";
+import useWebSocket, { ReadyState } from "react-use-websocket";
 
-import {endpoint} from "@/constants/endpoint";
+import { endpoint } from "@/constants/endpoint";
+import ConnectingProgress from "@/components/common/ConnectingProgress";
 
 type WebSocketControls = ReturnType<typeof useWebSocket>;
 
@@ -23,7 +30,7 @@ export type NetworkContextValue = Pick<
 const NetworkContext = createContext<NetworkContextValue | null>(null);
 
 const NetworkProvider = ({ children }: PropsWithChildren) => {
-  const serverUUID = "G29";
+  const serverUUID = "G29_SERVER_V0";
   const {
     lastMessage,
     lastJsonMessage,
@@ -78,7 +85,13 @@ const NetworkProvider = ({ children }: PropsWithChildren) => {
   );
 
   return (
-    <NetworkContext.Provider value={value}>{children}</NetworkContext.Provider>
+    <NetworkContext.Provider value={value}>
+      {readyState === ReadyState.OPEN ? (
+        children
+      ) : (
+        <ConnectingProgress readyState={readyState} />
+      )}
+    </NetworkContext.Provider>
   );
 };
 

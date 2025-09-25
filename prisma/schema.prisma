@@ -12,11 +12,9 @@ datasource db {
 }
 
 model Client {
-  id          Int      @id @default(autoincrement())
-  assigned_id String   @default(uuid())
-  ts          DateTime @default(now())
-  pubkey      String   @unique
-  host        String
-  port        Int?
-  name        String?
+  id      Int      @id @default(autoincrement())
+  userID  String   @unique
+  ts      DateTime @default(now())
+  pubkey  String   @unique
+  version String
 }

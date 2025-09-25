@@ -5,16 +5,25 @@ import ConnectingProgress from "@/components/common/ConnectingProgress";
 import { useEffect } from "react";
 import { ReadyState } from "react-use-websocket";
 import { useRouter } from "next/navigation";
+import { useAuthentication } from "@/contexts/AuthenticationContext";
 
 const HomePage = () => {
   const { readyState } = useNetwork();
-  const { replace } = useRouter();
+  const { isLoggedIn } = useAuthentication();
+  const { push } = useRouter();
 
   useEffect(() => {
     if (readyState === ReadyState.OPEN) {
-      setTimeout(() => {
-        replace("/login");
-      }, 1000);
+      if (isLoggedIn) {
+        setTimeout(() => {
+          push("/chat");
+        }, 1000);
+      }
+      if (!isLoggedIn) {
+        setTimeout(() => {
+          push("/login");
+        }, 1000);
+      }
     }
   }, [readyState]);
 

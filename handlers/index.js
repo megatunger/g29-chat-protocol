@@ -2,13 +2,13 @@
 
 const ping = require("./ping");
 const text = require("./text");
-const userHello = require("./USER_HELLO");
+const USER_HELLO = require("./USER_HELLO");
 const SERVER_HELLO_JOIN = require("./SERVER_HELLO_JOIN");
 
 const handlers = new Map([
   ["ping", ping],
   ["text", text],
-  ["USER_HELLO", userHello],
+  ["USER_HELLO", USER_HELLO],
   ["SERVER_HELLO_JOIN", SERVER_HELLO_JOIN],
 ]);
 

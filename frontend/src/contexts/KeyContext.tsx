@@ -1,7 +1,17 @@
 "use client";
 
-import { createContext, PropsWithChildren, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { ChatCrypto, ChatKeyPair, KeyStorage } from "@/lib/crypto";
+import {
+  createContext,
+  PropsWithChildren,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
+import { ChatCrypto, ChatKeyPair } from "@/lib/crypto";
+import { useAuthStore } from "@/stores/auth.store";
 
 export type KeyStatus = "none" | "generating" | "ready" | "error";
 
@@ -15,17 +25,23 @@ type KeyContextValue = {
   userKeys: ChatKeyPair | null;
   userInfo: UserInfo | null;
   error: string | null;
-  
+
   // Key management actions
   generateKeys: (userInfo: UserInfo) => Promise<void>;
   generateKeysAuto: (userId: string) => Promise<void>; // For automatic generation during login
   loadExistingKeys: () => Promise<void>;
   clearKeys: () => void;
-  
+
   // Crypto operations
-  encryptMessage: (message: string, recipientPublicKey: string) => Promise<string>;
-  decryptMessage: (encryptedMessage: string, senderPublicKey: string) => Promise<{ message: string; verified: boolean }>;
-  
+  encryptMessage: (
+    message: string,
+    recipientPublicKey: string,
+  ) => Promise<string>;
+  decryptMessage: (
+    encryptedMessage: string,
+    senderPublicKey: string,
+  ) => Promise<{ message: string; verified: boolean }>;
+
   // Utility functions
   hasKeys: boolean;
   getPublicKey: () => string | null;
@@ -36,32 +52,43 @@ const KeyContext = createContext<KeyContextValue | null>(null);
 
 const KeyProvider = ({ children }: PropsWithChildren) => {
   const [keyStatus, setKeyStatus] = useState<KeyStatus>("none");
-  const [userKeys, setUserKeys] = useState<ChatKeyPair | null>(null);
+  const [userKeys, setLocalUserKeys] = useState<ChatKeyPair | null>(null);
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Load existing keys on app start
+  const storedUserKeys = useAuthStore((state) => state.userKeys);
+  const setPersistedUserKeys = useAuthStore((state) => state.setUserKeys);
+  const clearPersistedUserKeys = useAuthStore((state) => state.clearUserKeys);
+
+  const applyKeys = useCallback(
+    async (keys: ChatKeyPair, info?: UserInfo) => {
+      const isValid = await ChatCrypto.validateKey(keys.publicKey);
+      if (!isValid) {
+        clearPersistedUserKeys();
+        throw new Error("Stored keys are invalid");
+      }
+
+      setLocalUserKeys(keys);
+      setUserInfo(info ?? { name: "User", email: "user@example.com" });
+      setKeyStatus("ready");
+    },
+    [clearPersistedUserKeys],
+  );
+
   useEffect(() => {
-    const loadKeys = async () => {
+    if (!storedUserKeys) {
+      setLocalUserKeys(null);
+      setUserInfo(null);
+      setKeyStatus("none");
+      setError(null);
+      return;
+    }
+
+    const rehydrate = async () => {
       try {
-        if (KeyStorage.hasKeys()) {
-          setKeyStatus("generating"); // Show loading state
-          const stored = KeyStorage.loadKeys();
-          if (stored) {
-            // Validate the stored keys
-            const isValid = await ChatCrypto.validateKey(stored.publicKey);
-            if (isValid) {
-              setUserKeys(stored);
-              setKeyStatus("ready");
-              // Try to extract user info from public key (simplified)
-              setUserInfo({ name: "User", email: "user@example.com" });
-            } else {
-              // Invalid keys, clear them
-              KeyStorage.clearKeys();
-              setKeyStatus("none");
-            }
-          }
-        }
+        setKeyStatus("generating");
+        setError(null);
+        await applyKeys(storedUserKeys);
       } catch (err) {
         console.error("Failed to load existing keys:", err);
         setError(err instanceof Error ? err.message : "Failed to load keys");
@@ -69,118 +96,125 @@ const KeyProvider = ({ children }: PropsWithChildren) => {
       }
     };
 
-    loadKeys();
-  }, []);
+    rehydrate();
+  }, [applyKeys, storedUserKeys]);
 
-  const generateKeys = useCallback(async (info: UserInfo) => {
-    try {
-      setKeyStatus("generating");
-      setError(null);
-      setUserInfo(info);
+  const generateKeys = useCallback(
+    async (info: UserInfo) => {
+      try {
+        setKeyStatus("generating");
+        setError(null);
+        setUserInfo(info);
 
-      const newKeys = await ChatCrypto.generateKeyPair(info.name, info.email);
-      
-      // Save to storage
-      KeyStorage.saveKeys(newKeys);
-      
-      setUserKeys(newKeys);
-      setKeyStatus("ready");
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to generate keys";
-      setError(errorMessage);
-      setKeyStatus("error");
-      console.error("Key generation failed:", err);
-    }
-  }, []);
+        const newKeys = await ChatCrypto.generateKeyPair(info.name, info.email);
+        await applyKeys(newKeys, info);
+        setPersistedUserKeys(newKeys);
+      } catch (err) {
+        const errorMessage =
+          err instanceof Error ? err.message : "Failed to generate keys";
+        setError(errorMessage);
+        setKeyStatus("error");
+        console.error("Key generation failed:", err);
+      }
+    },
+    [applyKeys, setPersistedUserKeys],
+  );
 
-  const generateKeysAuto = useCallback(async (userId: string) => {
-    try {
-      setKeyStatus("generating");
-      setError(null);
-      
-      // Use userId as both name and email for automatic generation
-      const info: UserInfo = { name: userId, email: `${userId}@chat.local` };
-      setUserInfo(info);
+  const generateKeysAuto = useCallback(
+    async (userId: string) => {
+      try {
+        setKeyStatus("generating");
+        setError(null);
 
-      const newKeys = await ChatCrypto.generateKeyPair(info.name, info.email);
-      
-      // Save to storage
-      KeyStorage.saveKeys(newKeys);
-      
-      setUserKeys(newKeys);
-      setKeyStatus("ready");
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to generate keys";
-      setError(errorMessage);
-      setKeyStatus("error");
-      console.error("Automatic key generation failed:", err);
-    }
-  }, []);
+        const info: UserInfo = { name: userId, email: `${userId}@chat.local` };
+        const newKeys = await ChatCrypto.generateKeyPair(info.name, info.email);
+
+        await applyKeys(newKeys, info);
+        setPersistedUserKeys(newKeys);
+      } catch (err) {
+        const errorMessage =
+          err instanceof Error ? err.message : "Failed to generate keys";
+        setError(errorMessage);
+        setKeyStatus("error");
+        console.error("Automatic key generation failed:", err);
+      }
+    },
+    [applyKeys, setPersistedUserKeys],
+  );
 
   const loadExistingKeys = useCallback(async () => {
     try {
       setKeyStatus("generating");
       setError(null);
 
-      const stored = KeyStorage.loadKeys();
+      const stored = useAuthStore.getState().userKeys;
       if (!stored) {
         setKeyStatus("none");
         return;
       }
 
-      // Validate keys
-      const isValid = await ChatCrypto.validateKey(stored.publicKey);
-      if (!isValid) {
-        KeyStorage.clearKeys();
-        setKeyStatus("none");
-        throw new Error("Stored keys are invalid");
-      }
-
-      setUserKeys(stored);
-      setUserInfo({ name: "User", email: "user@example.com" });
-      setKeyStatus("ready");
+      await applyKeys(stored);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to load keys";
+      const errorMessage =
+        err instanceof Error ? err.message : "Failed to load keys";
       setError(errorMessage);
       setKeyStatus("error");
       console.error("Failed to load keys:", err);
     }
-  }, []);
+  }, [applyKeys]);
 
   const clearKeys = useCallback(() => {
-    KeyStorage.clearKeys();
-    setUserKeys(null);
+    clearPersistedUserKeys();
+    setLocalUserKeys(null);
     setUserInfo(null);
     setKeyStatus("none");
     setError(null);
-  }, []);
+  }, [clearPersistedUserKeys]);
 
-  const encryptMessage = useCallback(async (message: string, recipientPublicKey: string): Promise<string> => {
-    if (!userKeys) {
-      throw new Error("No user keys available for signing");
-    }
+  const encryptMessage = useCallback(
+    async (message: string, recipientPublicKey: string): Promise<string> => {
+      if (!userKeys) {
+        throw new Error("No user keys available for signing");
+      }
 
-    try {
-      return await ChatCrypto.encryptAndSign(message, recipientPublicKey, userKeys.privateKey);
-    } catch (err) {
-      throw new Error(`Encryption failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
-    }
-  }, [userKeys]);
+      try {
+        return await ChatCrypto.encryptAndSign(
+          message,
+          recipientPublicKey,
+          userKeys.privateKey,
+        );
+      } catch (err) {
+        throw new Error(
+          `Encryption failed: ${err instanceof Error ? err.message : "Unknown error"}`,
+        );
+      }
+    },
+    [userKeys],
+  );
 
-  const decryptMessage = useCallback(async (
-    encryptedMessage: string, 
-    senderPublicKey: string
-  ): Promise<{ message: string; verified: boolean }> => {
-    if (!userKeys) {
-      throw new Error("No user keys available for decryption");
-    }
+  const decryptMessage = useCallback(
+    async (
+      encryptedMessage: string,
+      senderPublicKey: string,
+    ): Promise<{ message: string; verified: boolean }> => {
+      if (!userKeys) {
+        throw new Error("No user keys available for decryption");
+      }
 
-    try {
-      return await ChatCrypto.decryptAndVerify(encryptedMessage, userKeys.privateKey, senderPublicKey);
-    } catch (err) {
-      throw new Error(`Decryption failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
-    }
-  }, [userKeys]);
+      try {
+        return await ChatCrypto.decryptAndVerify(
+          encryptedMessage,
+          userKeys.privateKey,
+          senderPublicKey,
+        );
+      } catch (err) {
+        throw new Error(
+          `Decryption failed: ${err instanceof Error ? err.message : "Unknown error"}`,
+        );
+      }
+    },
+    [userKeys],
+  );
 
   const getPublicKey = useCallback((): string | null => {
     return userKeys?.publicKey || null;
@@ -224,7 +258,7 @@ const KeyProvider = ({ children }: PropsWithChildren) => {
       hasKeys,
       getPublicKey,
       isGenerating,
-    ]
+    ],
   );
 
   return <KeyContext.Provider value={value}>{children}</KeyContext.Provider>;
