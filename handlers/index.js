@@ -2,10 +2,12 @@
 
 const ping = require("./ping");
 const text = require("./text");
+const userHello = require("./USER_HELLO");
 
 const handlers = new Map([
   ["ping", ping],
   ["text", text],
+  ["USER_HELLO", userHello],
 ]);
 
 function getHandler(type) {

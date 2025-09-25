@@ -19,9 +19,11 @@
     "@fastify/cors": "^11.1.0",
     "@fastify/sensible": "^6.0.0",
     "@fastify/websocket": "^11.2.0",
+    "bcrypt": "^6.0.0",
     "fastify": "^5.0.0",
     "fastify-cli": "^7.4.0",
-    "fastify-plugin": "^5.0.0"
+    "fastify-plugin": "^5.0.0",
+    "jsonwebtoken": "^9.0.2"
   },
   "devDependencies": {
     "prettier": "^3.6.2"
