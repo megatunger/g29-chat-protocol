@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { Archivo_Black, Space_Grotesk } from "next/font/google";
+import { NetworkProvider } from "@/contexts/NetworkContext";
 
 const archivoBlack = Archivo_Black({
   subsets: ["latin"],
@@ -30,7 +31,7 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${archivoBlack.variable} ${space.variable}`}>
         <div className="bg-[linear-gradient(to_right,#8080804D_1px,transparent_1px),linear-gradient(to_bottom,#80808090_1px,transparent_1px)] shadow-shadow [background-size:40px_40px] bg-secondary-background w-[100wh] h-[100vh] d-flex">
-          {children}
+          <NetworkProvider>{children}</NetworkProvider>
         </div>
       </body>
     </html>
