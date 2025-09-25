@@ -1,6 +1,13 @@
 "use client";
 
-import { createContext, PropsWithChildren, useCallback, useContext, useMemo, useState } from "react";
+import {
+  createContext,
+  PropsWithChildren,
+  useCallback,
+  useContext,
+  useMemo,
+  useState,
+} from "react";
 import { ChatCrypto, type ChatKeyPair } from "@/lib/crypto";
 import { useAuthStore } from "@/stores/auth.store";
 

@@ -34,9 +34,9 @@ export default function RootLayout({
         <div className="bg-[linear-gradient(to_right,#8080804D_1px,transparent_1px),linear-gradient(to_bottom,#80808090_1px,transparent_1px)] shadow-shadow [background-size:40px_40px] bg-secondary-background w-[100wh] h-[100vh] d-flex">
           <QueryClientProvider client={queryClient}>
             <NewKeyProvider>
-              <AuthenticationProvider>
-                <NetworkProvider>{children}</NetworkProvider>
-              </AuthenticationProvider>
+              <NetworkProvider>
+                <AuthenticationProvider>{children}</AuthenticationProvider>
+              </NetworkProvider>
             </NewKeyProvider>
             <ReactQueryDevtools initialIsOpen={false} />
           </QueryClientProvider>

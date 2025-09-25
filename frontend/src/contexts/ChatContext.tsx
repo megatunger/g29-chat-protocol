@@ -1,10 +1,17 @@
 "use client";
 
-import { createContext, PropsWithChildren, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import {
+  createContext,
+  PropsWithChildren,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import useWebSocket, { ReadyState } from "react-use-websocket";
 
 import { endpoint } from "@/constants/endpoint";
-import { useKeys } from "@/contexts/KeyContext";
 
 type ChatDirection = "incoming" | "outgoing";
 
@@ -19,17 +26,12 @@ type ChatContextValue = {
   lastMessage: MessageEvent<any> | null;
   readyState: ReadyState;
   sendMessage: (message: string, keep?: boolean) => boolean;
-  canSendMessages: boolean;
   messages: ChatMessage[];
-  isAuthenticated: boolean;
 };
 
 const ChatContext = createContext<ChatContextValue | null>(null);
 
 const ChatProvider = ({ children }: PropsWithChildren) => {
-  const { hasKeys, getPublicKey } = useKeys();
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  
   const { lastMessage, readyState, sendJsonMessage } = useWebSocket(endpoint, {
     // heartbeat: {
     //   interval: 5000,
@@ -40,42 +42,6 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
   });
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-
-  // Automatically send USER_HELLO when keys are available and session is valid
-  useEffect(() => {
-    const publicKey = getPublicKey();
-    const userId = sessionStorage.getItem('userID');
-    
-    if (publicKey && userId && hasKeys && readyState === ReadyState.OPEN) {
-      const sessionToken = sessionStorage.getItem('sessionToken');
-      const challenge = sessionStorage.getItem('challenge');
-      
-      if (!sessionToken || !challenge) {
-        console.error('Missing session data for USER_HELLO');
-        return;
-      }
-
-      const userHelloMessage = {
-        type: 'USER_HELLO',
-        data: {
-          userId: userId,
-          publicKey: publicKey,
-          sessionToken: sessionToken,
-          challenge: challenge
-        }
-      };
-
-      sendJsonMessage(userHelloMessage);
-      setIsAuthenticated(true);
-    }
-  }, [hasKeys, getPublicKey, readyState, sendJsonMessage]);
-
-  // Reset authentication when connection is lost
-  useEffect(() => {
-    if (readyState !== ReadyState.OPEN) {
-      setIsAuthenticated(false);
-    }
-  }, [readyState]);
 
   const appendMessage = useCallback(
     (direction: ChatDirection, content: string) => {
@@ -121,7 +87,7 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
         appendMessage("outgoing", trimmed);
         return true;
       } catch (error) {
-        console.error('Failed to send message:', error);
+        console.error("Failed to send message:", error);
         return false;
       }
     },
@@ -152,11 +118,9 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
       lastMessage,
       readyState,
       sendMessage: sendMessageWithHistory,
-      canSendMessages: readyState === ReadyState.OPEN && isAuthenticated,
       messages,
-      isAuthenticated,
     }),
-    [lastMessage, messages, readyState, sendMessageWithHistory, isAuthenticated],
+    [lastMessage, messages, readyState, sendMessageWithHistory],
   );
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;

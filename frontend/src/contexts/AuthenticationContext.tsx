@@ -10,6 +10,7 @@ import {
   useMemo,
 } from "react";
 import { useNewKey } from "@/contexts/NewKeyContext";
+import useUserHello from "@/services/useUserHello";
 
 export type AuthenticationContextValue = {
   isLoggedIn: boolean;
@@ -21,8 +22,20 @@ const AuthenticationContext = createContext<AuthenticationContextValue | null>(
 
 const AuthenticationProvider = ({ children }: PropsWithChildren) => {
   const { storedKey } = useNewKey();
+  const { mutateAsync: sendUserHello, isPending, error } = useUserHello();
 
   const isLoggedIn = !!storedKey;
+
+  useEffect(() => {
+    if (isLoggedIn && storedKey) {
+      sendUserHello({
+        userID: storedKey.keyId,
+        pubkey: storedKey.publicKey,
+      }).catch(() => {
+        console.log("Invalid key, logging out");
+      });
+    }
+  }, [isLoggedIn]);
 
   const value = useMemo<AuthenticationContextValue>(
     () => ({

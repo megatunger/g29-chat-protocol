@@ -6,8 +6,8 @@ type AuthState = {
   userKey: ChatKeyPair | null;
   isLoggedIn: boolean;
   setUserKey: (key: ChatKeyPair) => void;
-  clearUserKey: () => void;
   setLoggedIn: (value: boolean) => void;
+  logout: () => void;
 };
 
 export const useAuthStore = create<AuthState>()(
@@ -16,8 +16,8 @@ export const useAuthStore = create<AuthState>()(
       userKey: null,
       isLoggedIn: false,
       setUserKey: (keys) => set({ userKey: keys }),
-      clearUserKey: () => set({ userKey: null }),
       setLoggedIn: (value) => set({ isLoggedIn: value }),
+      logout: () => set({ isLoggedIn: false, userKey: null }),
     }),
     {
       name: "auth",

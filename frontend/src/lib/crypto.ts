@@ -4,7 +4,7 @@
  */
 
 import * as openpgp from "openpgp";
-import { Buffer } from "buffer";
+import { decode, encode } from "base64url-universal";
 
 export interface ChatKeyPair {
   publicKey: string; // Base64-encoded armored public key
@@ -12,58 +12,12 @@ export interface ChatKeyPair {
   keyId: string; // Unique identifier
 }
 
-const hasBuffer = typeof Buffer !== "undefined";
-
 const encodeBase64 = (value: string): string => {
-  if (hasBuffer) {
-    return Buffer.from(value, "utf-8").toString("base64");
-  }
-
-  if (
-    typeof globalThis.TextEncoder !== "undefined" &&
-    typeof globalThis.btoa === "function"
-  ) {
-    const encoder = new TextEncoder();
-    const bytes = encoder.encode(value);
-    let binary = "";
-    bytes.forEach((byte) => {
-      binary += String.fromCharCode(byte);
-    });
-    return globalThis.btoa(binary);
-  }
-
-  throw new Error("Base64 encoding is not supported in this environment");
+  return encode(value);
 };
 
 const decodeBase64 = (value: string): string => {
-  if (value.includes("-----BEGIN PGP")) {
-    return value;
-  }
-
-  try {
-    if (hasBuffer) {
-      const decoded = Buffer.from(value, "base64").toString("utf-8");
-      return decoded.includes("-----BEGIN PGP") ? decoded : value;
-    }
-
-    if (
-      typeof globalThis.TextDecoder !== "undefined" &&
-      typeof globalThis.atob === "function"
-    ) {
-      const binary = globalThis.atob(value);
-      const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
-      const decoder = new TextDecoder();
-      const decoded = decoder.decode(bytes);
-      return decoded.includes("-----BEGIN PGP") ? decoded : value;
-    }
-  } catch (error) {
-    console.warn(
-      "Failed to decode base64 key; returning original value",
-      error,
-    );
-  }
-
-  return value;
+  return decode(value);
 };
 
 export class ChatCrypto {

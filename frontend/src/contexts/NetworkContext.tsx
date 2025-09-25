@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  createContext,
-  PropsWithChildren,
-  useCallback,
-  useContext,
-  useMemo,
-} from "react";
+import { createContext, PropsWithChildren, useCallback, useContext, useMemo } from "react";
 import useWebSocket, { ReadyState } from "react-use-websocket";
 
 import { endpoint } from "@/constants/endpoint";
@@ -87,7 +81,7 @@ const NetworkProvider = ({ children }: PropsWithChildren) => {
   return (
     <NetworkContext.Provider value={value}>
       {readyState === ReadyState.OPEN ? (
-        children
+        <>{children}</>
       ) : (
         <ConnectingProgress readyState={readyState} />
       )}
