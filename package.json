@@ -26,6 +26,7 @@
     "fastify-cli": "^7.4.0",
     "fastify-plugin": "^5.0.0",
     "jsonwebtoken": "^9.0.2",
+    "openpgp": "^6.2.2",
     "sqlite3": "^5.1.7"
   },
   "devDependencies": {
