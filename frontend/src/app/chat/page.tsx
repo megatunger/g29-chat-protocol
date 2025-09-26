@@ -1,14 +1,5 @@
 "use client";
-//
-// import { useKeys } from "@/contexts/KeyContext";
-// import { ChatProvider, useChat } from "@/contexts/ChatContext";
-// import KeyManagementPanel from "@/components/common/KeyManagementPanel";
-// import ChatMessageList from "@/components/common/ChatMessageList";
-// import MessageInput from "@/components/common/MessageInput";
-// import { useEffect, useState } from "react";
-// import ConnectingProgress from "@/components/common/ConnectingProgress";
-// import { Button } from "@/components/ui/button";
-//
+
 import { useChat } from "@/contexts/ChatContext";
 import { Button } from "@/components/ui/button";
 import MessageInput from "@/components/common/MessageInput";
@@ -16,14 +7,17 @@ import ChatMessageList from "@/components/common/ChatMessageList";
 import { useAuthStore } from "@/stores/auth.store";
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
+import { useRouter } from "next/navigation";
 
 const ChatPage = () => {
   const [text, setText] = useState("");
-  const { sendMessage, lastMessage, readyState, messages } = useChat();
+  const { sendMessage, messages } = useChat();
   const { logout } = useAuthStore();
+  const { replace } = useRouter();
 
   const handleLogout = () => {
     logout();
+    replace("/");
   };
 
   const handleSend = () => {
@@ -42,7 +36,7 @@ const ChatPage = () => {
       {/* Header with logout */}
       <Card className="w-full px-4">
         <div className="flex items-center justify-between">
-          <h1 className="text-xl font-bold">🔐 very secure, very mindful</h1>
+          <h1 className="text-xl font-bold">🔐 Secure Chat</h1>
           <Button variant="neutral" onClick={handleLogout}>
             Logout
           </Button>

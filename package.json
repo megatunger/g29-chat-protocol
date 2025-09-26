@@ -21,6 +21,7 @@
     "@fastify/sensible": "^6.0.0",
     "@fastify/websocket": "^11.2.0",
     "@prisma/client": "^6.16.2",
+    "base64url-universal": "^2.0.0",
     "bcrypt": "^6.0.0",
     "fastify": "^5.0.0",
     "fastify-cli": "^7.4.0",

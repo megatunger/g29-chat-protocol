@@ -16,6 +16,7 @@ type NewKeyContextValue = {
   isProcessing: boolean;
   error: string | null;
   generateKey: (userId: string) => Promise<ChatKeyPair | null>;
+  sign: (message: string) => Promise<string>;
   loadKey: () => ChatKeyPair | null;
   saveKey: (key: ChatKeyPair) => void;
 };
@@ -62,6 +63,19 @@ const NewKeyProvider = ({ children }: PropsWithChildren) => {
     [saveKey],
   );
 
+  const sign = async (message: any) => {
+    if (!storedKey || !storedKey.privateKey) {
+      throw new Error("Key not found!");
+    }
+    if (!message) {
+      throw new Error("Message was empty!");
+    }
+    return await ChatCrypto.signPayload(
+      JSON.stringify(message),
+      storedKey.privateKey,
+    );
+  };
+
   const value = useMemo<NewKeyContextValue>(
     () => ({
       storedKey,
@@ -70,6 +84,7 @@ const NewKeyProvider = ({ children }: PropsWithChildren) => {
       generateKey,
       loadKey,
       saveKey,
+      sign,
     }),
     [storedKey, isProcessing, error, generateKey, loadKey, saveKey],
   );

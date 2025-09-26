@@ -191,7 +191,7 @@ function useProtocolRequest() {
   );
 
   const sendAndExpect = useCallback(
-    <TResult = unknown>(
+    async <TResult = unknown>(
       message: Record<string, unknown>,
       validator: MessageValidator,
       options?: ExpectMessageOptions,
@@ -202,14 +202,14 @@ function useProtocolRequest() {
       );
 
       try {
-        sendJsonMessage(message);
+        await sendJsonMessage(message);
       } catch (error) {
         const reason =
           error instanceof Error
             ? error
             : new Error(`Failed to send WebSocket message: ${String(error)}`);
         cancel(reason);
-        return Promise.reject(reason);
+        throw reason;
       }
 
       return promise;

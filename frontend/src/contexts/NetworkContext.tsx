@@ -5,6 +5,7 @@ import useWebSocket, { ReadyState } from "react-use-websocket";
 
 import { endpoint } from "@/constants/endpoint";
 import ConnectingProgress from "@/components/common/ConnectingProgress";
+import { useNewKey } from "@/contexts/NewKeyContext";
 
 type WebSocketControls = ReturnType<typeof useWebSocket>;
 
@@ -39,6 +40,8 @@ const NetworkProvider = ({ children }: PropsWithChildren) => {
     shouldReconnect: () => true,
   });
 
+  const { storedKey, sign } = useNewKey();
+
   const disconnect = useCallback(() => {
     const socket = getWebSocket();
     if (socket && socket.readyState === WebSocket.OPEN) {
@@ -47,13 +50,19 @@ const NetworkProvider = ({ children }: PropsWithChildren) => {
   }, [getWebSocket]);
 
   const wrappedSendJsonMessage = useCallback(
-    (data: any) => {
+    async (data: any) => {
+      let sig = "";
+      if (!!storedKey) {
+        sig = await sign(data?.payload);
+      }
+
       sendJsonMessage({
         ...data,
         ts: new Date().getTime(),
+        sig: sig,
       });
     },
-    [sendJsonMessage],
+    [sendJsonMessage, storedKey],
   );
 
   const value = useMemo<NetworkContextValue>(

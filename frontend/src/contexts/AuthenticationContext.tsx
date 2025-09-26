@@ -15,16 +15,18 @@ const AuthenticationContext = createContext<AuthenticationContextValue | null>(
 
 const AuthenticationProvider = ({ children }: PropsWithChildren) => {
   const { storedKey } = useNewKey();
+  const { replace } = useRouter();
   const { mutateAsync: sendUserHello, isPending, error } = useUserHello();
 
   const isLoggedIn = !!storedKey;
 
   useEffect(() => {
-    if (isLoggedIn) {
+    if (isLoggedIn && storedKey) {
       sendUserHello({
         userID: storedKey.keyId,
         pubkey: storedKey.publicKey,
-      }).catch(() => {
+      }).catch((error) => {
+        replace("/logout");
         console.log("Invalid key, logging out");
       });
     }
