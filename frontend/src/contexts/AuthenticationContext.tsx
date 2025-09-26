@@ -27,7 +27,8 @@ const AuthenticationProvider = ({ children }: PropsWithChildren) => {
   const isLoggedIn = !!storedKey;
 
   useEffect(() => {
-    if (isLoggedIn && storedKey) {
+    if (isLoggedIn) {
+      console.log("Logged in");
       sendUserHello({
         userID: storedKey.keyId,
         pubkey: storedKey.publicKey,

@@ -1,14 +1,6 @@
 "use client";
 
-import {
-  createContext,
-  PropsWithChildren,
-  ReactNode,
-  useCallback,
-  useContext,
-  useMemo,
-  useState,
-} from "react";
+import { createContext, PropsWithChildren, ReactNode, useCallback, useContext, useMemo, useState } from "react";
 import { useAuthStore } from "@/stores/auth.store";
 import { useNetwork } from "@/contexts/NetworkContext";
 import useList from "@/services/useList";
@@ -70,7 +62,6 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
         if (trimmed.startsWith("/list")) {
           appendMessage("outgoing", trimmed, new Date().getTime());
           const usersResponse = await sendListAllUsers({});
-          console.log("userResponse", usersResponse);
           appendMessage(
             "incoming",
             <div className="d-flex flex-row items-start">

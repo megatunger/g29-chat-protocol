@@ -42,7 +42,7 @@ const ChatPage = () => {
       {/* Header with logout */}
       <Card className="w-full px-4">
         <div className="flex items-center justify-between">
-          <h1 className="text-xl font-bold">Secure Chat</h1>
+          <h1 className="text-xl font-bold">🔐 very secure, very mindful</h1>
           <Button variant="neutral" onClick={handleLogout}>
             Logout
           </Button>

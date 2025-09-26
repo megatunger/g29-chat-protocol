@@ -54,7 +54,7 @@ export default function LoginPage() {
         <Card className="w-full max-w-sm">
           <CardHeader>
             <CardTitle>
-              <h2 className="text-3xl">Secure Chat</h2>
+              <h2 className="text-3xl">🔐Secure Chat</h2>
             </CardTitle>
             <CardDescription>
               Enter your credentials to join the secure chat network
