@@ -2,6 +2,7 @@
 
 const { getHandler } = require("../handlers");
 const { parseMessage, sendError } = require("../utilities/message-utils");
+const connectionRegistry = require("../utilities/connection-registry");
 
 module.exports = async function (fastify) {
   fastify.get(
@@ -38,6 +39,7 @@ module.exports = async function (fastify) {
             meta: parsed.meta,
             fastify,
             req,
+            connectionRegistry,
           });
         } catch (error) {
           fastify.log.error(error, "WebSocket handler failed");
@@ -52,6 +54,7 @@ module.exports = async function (fastify) {
       });
 
       socket.on("close", () => {
+        connectionRegistry.unregisterSocket(socket);
         fastify.log.info({ address: req.ip }, "Client disconnected");
       });
 

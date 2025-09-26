@@ -67,9 +67,9 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
             <div className="d-flex flex-row items-start">
               {usersResponse?.payload?.message}
               <br />
-              <div className="mt-2 flex-col gap-2">
+              <div className="mt-2 flex-col">
                 {usersResponse?.payload?.users?.map((user) => (
-                  <div key={user?.userID}>
+                  <div key={user?.userID} className="mt-2">
                     <Badge className="cursor-pointer mr-2">
                       {user?.userID}
                     </Badge>

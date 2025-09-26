@@ -1,14 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import {
-  ComponentType,
-  createContext,
-  PropsWithChildren,
-  useContext,
-  useEffect,
-  useMemo,
-} from "react";
+import { ComponentType, createContext, PropsWithChildren, useContext, useEffect, useMemo } from "react";
 import { useNewKey } from "@/contexts/NewKeyContext";
 import useUserHello from "@/services/useUserHello";
 
@@ -28,7 +21,6 @@ const AuthenticationProvider = ({ children }: PropsWithChildren) => {
 
   useEffect(() => {
     if (isLoggedIn) {
-      console.log("Logged in");
       sendUserHello({
         userID: storedKey.keyId,
         pubkey: storedKey.publicKey,

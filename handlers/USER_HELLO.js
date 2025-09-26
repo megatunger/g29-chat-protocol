@@ -2,11 +2,12 @@
 
 const { send } = require("../utilities/message-utils");
 const { PrismaClient } = require("../generated/prisma");
+const defaultRegistry = require("../utilities/connection-registry");
 
 const prisma = new PrismaClient();
 
 module.exports = async function USER_HELLO(props) {
-  const { socket, data, meta } = props;
+  const { socket, data, meta, connectionRegistry = defaultRegistry } = props;
   console.log("[USER_HELLO] Request: ", data);
   
   if (!data.payload) {
@@ -36,8 +37,8 @@ module.exports = async function USER_HELLO(props) {
       },
     });
 
+    connectionRegistry.registerUserConnection(data.from, socket);
     console.log(`✅ User ${data.from} is now ACTIVE in database`);
-
 
     send(socket, {
       type: "ACK",
@@ -47,19 +48,25 @@ module.exports = async function USER_HELLO(props) {
         message: "Welcome to the chat!",
       },
     });
-
-
-    socket.on('close', async () => {
-      try {
-        await prisma.client.update({
-          where: { userID: data.from },
-          data: { isActive: false },  
-        });
-        console.log(`User ${data.from} is now INACTIVE (disconnected)`);
-      } catch (error) {
-        console.error( error);
-      }
-    });
+    if (!socket.__userStatusCleanup) {
+      socket.__userStatusCleanup = true;
+      socket.on("close", async () => {
+        const userId = connectionRegistry.getUserIdBySocket(socket) || data.from;
+        connectionRegistry.unregisterSocket(socket);
+        if (!userId) {
+          return;
+        }
+        try {
+          await prisma.client.update({
+            where: { userID: userId },
+            data: { isActive: false },
+          });
+          console.log(`User ${userId} is now INACTIVE (disconnected)`);
+        } catch (error) {
+          console.error(error);
+        }
+      });
+    }
 
   } catch (error) {
     console.error("Database error:", error);
