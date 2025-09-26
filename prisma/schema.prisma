@@ -12,9 +12,10 @@ datasource db {
 }
 
 model Client {
-  id      Int      @id @default(autoincrement())
-  userID  String   @unique
-  ts      DateTime @default(now())
-  pubkey  String   @unique
-  version String
+  id       Int      @id @default(autoincrement())
+  userID   String   @unique
+  ts       DateTime @default(now())
+  pubkey   String   @unique
+  version  String
+  isActive Boolean  @default(false)
 }

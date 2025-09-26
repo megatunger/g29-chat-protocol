@@ -4,12 +4,14 @@ const ping = require("./ping");
 const text = require("./text");
 const USER_HELLO = require("./USER_HELLO");
 const SERVER_HELLO_JOIN = require("./SERVER_HELLO_JOIN");
+const LIST = require("./LIST");
 
 const handlers = new Map([
   ["ping", ping],
   ["text", text],
   ["USER_HELLO", USER_HELLO],
   ["SERVER_HELLO_JOIN", SERVER_HELLO_JOIN],
+  ["LIST", LIST],
 ]);
 
 function getHandler(type) {

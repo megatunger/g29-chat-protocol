@@ -12,6 +12,7 @@ import {
 import useWebSocket, { ReadyState } from "react-use-websocket";
 
 import { endpoint } from "@/constants/endpoint";
+import { useAuthStore } from "@/stores/auth.store";
 
 type ChatDirection = "incoming" | "outgoing";
 
@@ -42,6 +43,7 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
   });
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const { userKey } = useAuthStore(); // Get current user info
 
   const appendMessage = useCallback(
     (direction: ChatDirection, content: string) => {
@@ -78,12 +80,19 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
       }
 
       try {
-        sendJsonMessage(
-          {
-            message: message,
-          },
-          keep,
-        );
+        
+        if (trimmed.startsWith('/list')) {
+          sendJsonMessage(
+            {
+              type: "LIST",
+              from: userKey?.keyId || "anonymous",
+              to: "server",
+              payload: {},
+            },
+            keep,
+          );
+        }
+        
         appendMessage("outgoing", trimmed);
         return true;
       } catch (error) {
