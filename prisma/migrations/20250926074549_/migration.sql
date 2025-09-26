@@ -4,7 +4,8 @@ CREATE TABLE "Client" (
     "userID" TEXT NOT NULL,
     "ts" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "pubkey" TEXT NOT NULL,
-    "version" TEXT NOT NULL
+    "version" TEXT NOT NULL,
+    "isActive" BOOLEAN NOT NULL DEFAULT false
 );
 
 -- CreateIndex

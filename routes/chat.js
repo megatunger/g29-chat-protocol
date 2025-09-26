@@ -30,6 +30,8 @@ module.exports = async function (fastify) {
         }
 
         try {
+          // A delay to make clock on client always sooner than server
+          await new Promise((resolve, reject) => setTimeout(resolve, 400));
           await handler({
             socket,
             data: parsed,

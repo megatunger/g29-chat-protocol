@@ -7,3 +7,9 @@ export const generateUserID = (userID: string) => {
 };
 
 export const DEFAULT_EXPECTED_TYPE = "ACK";
+
+export type useSendAndExpectOptions = {
+  expectedType?: string;
+  timeoutMs?: number;
+  validate?: (message: unknown) => boolean;
+};

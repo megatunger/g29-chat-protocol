@@ -3,6 +3,7 @@ import * as React from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import type { ChatMessage } from "@/contexts/ChatContext";
+import { orderBy } from "lodash";
 
 type ChatMessageListProps = {
   messages: ChatMessage[];
@@ -31,7 +32,7 @@ const ChatMessageList = ({ messages }: ChatMessageListProps) => {
 
   return (
     <div className="flex flex-col gap-3 rounded-base border-2 border-border bg-secondary-background p-4 shadow-shadow max-h-[360px] overflow-scroll">
-      {messages.map((message) => {
+      {orderBy(messages, "timestamp", "asc").map((message) => {
         const isOutgoing = message.direction === "outgoing";
 
         return (
@@ -44,7 +45,7 @@ const ChatMessageList = ({ messages }: ChatMessageListProps) => {
           >
             {!isOutgoing && (
               <Avatar className="shadow-shadow">
-                <AvatarFallback>WS</AvatarFallback>
+                <AvatarFallback>SRV</AvatarFallback>
               </Avatar>
             )}
 
@@ -62,7 +63,7 @@ const ChatMessageList = ({ messages }: ChatMessageListProps) => {
                     : "bg-white text-foreground shadow-shadow",
                 )}
               >
-                <span>{message.content}</span>
+                {message.content}
               </div>
               <span className="text-xs text-muted-foreground">
                 {isOutgoing ? "You" : "Server"} ·{" "}

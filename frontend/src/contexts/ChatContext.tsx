@@ -3,29 +3,28 @@
 import {
   createContext,
   PropsWithChildren,
+  ReactNode,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useState,
 } from "react";
-import useWebSocket, { ReadyState } from "react-use-websocket";
-
-import { endpoint } from "@/constants/endpoint";
 import { useAuthStore } from "@/stores/auth.store";
+import { useNetwork } from "@/contexts/NetworkContext";
+import useList from "@/services/useList";
+import { Badge } from "@/components/ui/badge";
+import { formatDistance } from "date-fns";
 
 type ChatDirection = "incoming" | "outgoing";
 
 export type ChatMessage = {
   id: string;
-  content: string;
+  content: ReactNode;
   direction: ChatDirection;
   timestamp: number;
 };
 
 type ChatContextValue = {
-  lastMessage: MessageEvent<any> | null;
-  readyState: ReadyState;
   sendMessage: (message: string, keep?: boolean) => boolean;
   messages: ChatMessage[];
 };
@@ -33,25 +32,13 @@ type ChatContextValue = {
 const ChatContext = createContext<ChatContextValue | null>(null);
 
 const ChatProvider = ({ children }: PropsWithChildren) => {
-  const { lastMessage, readyState, sendJsonMessage } = useWebSocket(endpoint, {
-    // heartbeat: {
-    //   interval: 5000,
-    // },
-    reconnectAttempts: 3,
-    reconnectInterval: 3000,
-    shouldReconnect: () => true,
-  });
-
+  const { sendJsonMessage, serverUUID } = useNetwork();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const { userKey } = useAuthStore(); // Get current user info
+  const { mutateAsync: sendListAllUsers } = useList();
 
   const appendMessage = useCallback(
-    (direction: ChatDirection, content: string) => {
-      const trimmed = content?.toString().trim();
-      if (!trimmed) {
-        return;
-      }
-
+    (direction: ChatDirection, content: ReactNode, ts: number) => {
       const createId = () => {
         if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
           return crypto.randomUUID();
@@ -63,9 +50,9 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
         ...previous,
         {
           id: createId(),
-          content: trimmed,
+          content: content,
           direction,
-          timestamp: Date.now(),
+          timestamp: ts,
         },
       ]);
     },
@@ -73,27 +60,43 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
   );
 
   const sendMessageWithHistory = useCallback<ChatContextValue["sendMessage"]>(
-    (message, keep) => {
+    async (message, keep) => {
       const trimmed = message?.toString().trim();
-      if (!trimmed) {
+      if (!trimmed || !userKey) {
         return false;
       }
 
       try {
-        
-        if (trimmed.startsWith('/list')) {
-          sendJsonMessage(
-            {
-              type: "LIST",
-              from: userKey?.keyId || "anonymous",
-              to: "server",
-              payload: {},
-            },
-            keep,
+        if (trimmed.startsWith("/list")) {
+          appendMessage("outgoing", trimmed, new Date().getTime());
+          const usersResponse = await sendListAllUsers({});
+          console.log("userResponse", usersResponse);
+          appendMessage(
+            "incoming",
+            <div className="d-flex flex-row items-start">
+              {usersResponse?.payload?.message}
+              <br />
+              <div className="mt-2 flex-col gap-2">
+                {usersResponse?.payload?.users?.map((user) => (
+                  <div key={user?.userID}>
+                    <Badge className="cursor-pointer mr-2">
+                      {user?.userID}
+                    </Badge>
+                    <span className="text-gray-500 text-xs">
+                      {formatDistance(new Date(user?.ts), new Date(), {
+                        addSuffix: true,
+                      })}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>,
+            usersResponse?.ts,
           );
+          return;
         }
-        
-        appendMessage("outgoing", trimmed);
+
+        appendMessage("outgoing", trimmed, new Date().getTime());
         return true;
       } catch (error) {
         console.error("Failed to send message:", error);
@@ -103,33 +106,12 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
     [appendMessage, sendJsonMessage],
   );
 
-  useEffect(() => {
-    if (!lastMessage) {
-      return;
-    }
-
-    const data =
-      typeof lastMessage.data === "string"
-        ? lastMessage.data
-        : (() => {
-            try {
-              return JSON.stringify(lastMessage.data);
-            } catch (error) {
-              return "[unsupported payload]";
-            }
-          })();
-
-    appendMessage("incoming", data);
-  }, [appendMessage, lastMessage]);
-
   const value = useMemo<ChatContextValue>(
     () => ({
-      lastMessage,
-      readyState,
       sendMessage: sendMessageWithHistory,
-      messages,
+      messages: messages,
     }),
-    [lastMessage, messages, readyState, sendMessageWithHistory],
+    [messages, sendMessageWithHistory],
   );
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;

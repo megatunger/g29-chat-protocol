@@ -10,23 +10,22 @@ module.exports = async function LIST(props) {
   console.log("[LIST] Request from:", data.from);
 
   try {
-
     const activeUsers = await prisma.client.findMany({
       where: {
-        isActive: true,  
+        isActive: true,
       },
       select: {
         userID: true,
         version: true,
         ts: true,
+        pubkey: true,
       },
       orderBy: {
-        ts: 'desc', 
+        ts: "desc",
       },
     });
 
     console.log(`Found ${activeUsers.length} ACTIVE users`);
-
 
     send(socket, {
       type: "USER_LIST",
@@ -38,12 +37,11 @@ module.exports = async function LIST(props) {
         message: `Found ${activeUsers.length} active users online`,
       },
     });
-
   } catch (error) {
     console.error("Database error:", error);
     send(socket, {
       type: "ERROR",
-      from: "server", 
+      from: "server",
       to: data.from,
       payload: {
         code: "DATABASE_ERROR",
