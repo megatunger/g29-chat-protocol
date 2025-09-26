@@ -3,7 +3,7 @@
 const { send, sendError } = require("../utilities/message-utils");
 const { PrismaClient } = require("../generated/prisma");
 const defaultRegistry = require("../utilities/connection-registry");
-const { verifyPayloadSignature } = require("../utilities/crypto");
+const { verifyStoredUserSignature } = require("../utilities/signature-utils");
 
 const prisma = new PrismaClient();
 
@@ -20,29 +20,28 @@ module.exports = async function USER_HELLO(props) {
   }
 
   try {
-    if (data.sig !== "") {
-      const user = await prisma.client.findFirst({
-        where: {
-          userID: data.from,
-        },
-      });
-      if (!user) {
-        throw new Error("Missing userID in 'from' field");
-      }
-      const savedPubkey = user.pubkey;
-      const result = verifyPayloadSignature({
-        publicKey: savedPubkey,
-        payload: JSON.stringify(data.payload),
+    const user = await prisma.client.findFirst({
+      where: {
+        userID: data.from,
+      },
+    });
+    if (user) {
+      const { valid, user } = await verifyStoredUserSignature({
+        prismaClient: prisma,
+        userId: data.from,
+        payload: data.payload,
         signature: data.sig,
       });
 
-      if (!result) {
+      if (!valid) {
         sendError(socket, "INVALID_SIG", "Signature invalid!");
         return;
       }
-      console.log("✅ Signature valid: ", user.userID);
-    }
 
+      if (user) {
+        console.log("✅ Signature valid: ", user.userID);
+      }
+    }
     await prisma.client.upsert({
       where: {
         userID: data.from,

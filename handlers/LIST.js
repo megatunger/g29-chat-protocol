@@ -1,7 +1,8 @@
 "use strict";
 
-const { send } = require("../utilities/message-utils");
+const { send, sendError } = require("../utilities/message-utils");
 const { PrismaClient } = require("../generated/prisma");
+const { verifyStoredUserSignature } = require("../utilities/signature-utils");
 
 const prisma = new PrismaClient();
 
@@ -27,6 +28,21 @@ module.exports = async function LIST(props) {
 
     console.log(`Found ${activeUsers.length} ACTIVE users`);
 
+    const { valid, user } = await verifyStoredUserSignature({
+      prismaClient: prisma,
+      userId: data.from,
+      payload: data.payload,
+      signature: data.sig,
+    });
+
+    if (!valid) {
+      sendError(socket, "INVALID_SIG", "Signature invalid!");
+      return;
+    }
+
+    if (user) {
+      console.log("✅ Signature valid: ", user.userID);
+    }
     send(socket, {
       type: "USER_LIST",
       from: "server",
