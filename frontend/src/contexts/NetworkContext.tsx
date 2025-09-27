@@ -1,6 +1,12 @@
 "use client";
 
-import { createContext, PropsWithChildren, useCallback, useContext, useMemo } from "react";
+import {
+  createContext,
+  PropsWithChildren,
+  useCallback,
+  useContext,
+  useMemo,
+} from "react";
 import useWebSocket, { ReadyState } from "react-use-websocket";
 
 import { endpoint } from "@/constants/endpoint";
@@ -24,8 +30,26 @@ export type NetworkContextValue = Pick<
 
 const NetworkContext = createContext<NetworkContextValue | null>(null);
 
+const HEARTBEAT_INTERVAL_MS = 15_000;
+const HEARTBEAT_TIMEOUT_MS = 45_000;
+const CLIENT_HEARTBEAT_ID = "G29_CLIENT_V0";
+
 const NetworkProvider = ({ children }: PropsWithChildren) => {
   const serverUUID = "G29_SERVER_V0";
+  const { storedKey, sign } = useNewKey();
+  const heartbeatSender = storedKey?.keyId ?? CLIENT_HEARTBEAT_ID;
+  const heartbeatMessage = useCallback(
+    () =>
+      JSON.stringify({
+        type: "HEARTBEAT",
+        from: heartbeatSender,
+        to: serverUUID,
+        ts: Date.now(),
+        payload: {},
+        sig: "",
+      }),
+    [heartbeatSender, serverUUID],
+  );
   const {
     lastMessage,
     lastJsonMessage,
@@ -38,9 +62,12 @@ const NetworkProvider = ({ children }: PropsWithChildren) => {
     reconnectAttempts: 3,
     reconnectInterval: 3000,
     shouldReconnect: () => true,
+    heartbeat: {
+      interval: HEARTBEAT_INTERVAL_MS,
+      timeout: HEARTBEAT_TIMEOUT_MS,
+      message: heartbeatMessage,
+    },
   });
-
-  const { storedKey, sign } = useNewKey();
 
   const disconnect = useCallback(() => {
     const socket = getWebSocket();
@@ -62,7 +89,7 @@ const NetworkProvider = ({ children }: PropsWithChildren) => {
         sig: sig,
       });
     },
-    [sendJsonMessage, storedKey],
+    [sendJsonMessage, sign, storedKey],
   );
 
   const value = useMemo<NetworkContextValue>(

@@ -4,6 +4,9 @@ const { getHandler } = require("../handlers");
 const { parseMessage, sendError } = require("../utilities/message-utils");
 const connectionRegistry = require("../utilities/connection-registry");
 
+const HEARTBEAT_TIMEOUT_MS = 45_000;
+const HEARTBEAT_CHECK_INTERVAL_MS = 5_000;
+
 module.exports = async function (fastify) {
   fastify.get(
     "/chat",
@@ -13,7 +16,36 @@ module.exports = async function (fastify) {
     (socket, req) => {
       fastify.log.info({ address: req.ip }, "Client connected");
 
+      socket.__lastHeartbeatAt = Date.now();
+      const clearHeartbeatMonitor = () => {
+        if (socket.__heartbeatCheck) {
+          clearInterval(socket.__heartbeatCheck);
+          socket.__heartbeatCheck = null;
+        }
+      };
+
+      socket.__heartbeatCheck = setInterval(() => {
+        const lastHeartbeat = socket.__lastHeartbeatAt || 0;
+        const elapsed = Date.now() - lastHeartbeat;
+        if (elapsed > HEARTBEAT_TIMEOUT_MS) {
+          fastify.log.warn(
+            {
+              address: req.ip,
+              elapsed,
+            },
+            "Closing connection after heartbeat timeout",
+          );
+          clearHeartbeatMonitor();
+          try {
+            socket.close(4000, "heartbeat timeout");
+          } catch (error) {
+            fastify.log.error(error, "Failed to close socket after heartbeat timeout");
+          }
+        }
+      }, HEARTBEAT_CHECK_INTERVAL_MS);
+
       socket.on("message", async (rawMessage) => {
+        socket.__lastHeartbeatAt = Date.now();
         const parsed = parseMessage(rawMessage);
         if (parsed.error) {
           sendError(socket, "bad_request", parsed.error);
@@ -54,11 +86,13 @@ module.exports = async function (fastify) {
       });
 
       socket.on("close", () => {
+        clearHeartbeatMonitor();
         connectionRegistry.unregisterSocket(socket);
         fastify.log.info({ address: req.ip }, "Client disconnected");
       });
 
       socket.on("error", (error) => {
+        clearHeartbeatMonitor();
         fastify.log.error(error, "WebSocket connection error");
       });
     },
