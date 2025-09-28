@@ -23,25 +23,31 @@ module.exports = async function MSG_DIRECT(props) {
   }
 
   const { payload } = data;
-  const { recipientId, body, messageId, timestamp } = payload;
-
-  if (!messageId || typeof messageId !== "string") {
-    sendError(socket, "INVALID_MESSAGE_ID", "messageId must be provided");
-    return;
-  }
+  const { recipientId, ciphertext, content_sig: contentSig, sender_pub: senderPub, timestamp } =
+    payload;
 
   if (!recipientId || typeof recipientId !== "string") {
     sendError(socket, "INVALID_RECIPIENT", "recipientId must be provided");
     return;
   }
 
-  if (!body || typeof body !== "string") {
-    sendError(socket, "INVALID_BODY", "Direct messages require a body");
+  if (!ciphertext || typeof ciphertext !== "string") {
+    sendError(socket, "INVALID_CIPHERTEXT", "Direct messages require ciphertext");
+    return;
+  }
+
+  if (!senderPub || typeof senderPub !== "string") {
+    sendError(socket, "INVALID_SENDER_PUB", "Sender public key is required");
+    return;
+  }
+
+  if (!contentSig || typeof contentSig !== "string") {
+    sendError(socket, "INVALID_CONTENT_SIG", "content_sig must be provided");
     return;
   }
 
   try {
-    const { valid } = await verifyStoredUserSignature({
+    const { valid, user } = await verifyStoredUserSignature({
       prismaClient: prisma,
       userId: data.from,
       payload,
@@ -50,6 +56,11 @@ module.exports = async function MSG_DIRECT(props) {
 
     if (!valid) {
       sendError(socket, "INVALID_SIG", "Signature invalid");
+      return;
+    }
+
+    if (user?.pubkey && user.pubkey !== senderPub) {
+      sendError(socket, "MISMATCHED_PUBKEY", "Sender public key mismatch");
       return;
     }
 
@@ -73,9 +84,10 @@ module.exports = async function MSG_DIRECT(props) {
           from: "server",
           to: recipientId,
           payload: {
-            messageId,
             senderId: data.from,
-            body,
+            sender_pub: senderPub,
+            ciphertext,
+            content_sig: contentSig,
             timestamp: normalizedTimestamp,
           },
         });
@@ -90,9 +102,9 @@ module.exports = async function MSG_DIRECT(props) {
     }
 
     const ackPayload = {
-      messageId,
       recipientId,
       status: deliveryStatus,
+      content_sig: contentSig,
       updatedAt: new Date().toISOString(),
     };
 
