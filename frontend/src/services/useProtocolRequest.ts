@@ -40,6 +40,15 @@ const describeMessage = (message: unknown): string => {
   }
 };
 
+const isHeartbeatMessage = (message: unknown): boolean => {
+  if (!message || typeof message !== "object") {
+    return false;
+  }
+
+  const type = (message as { type?: unknown }).type;
+  return type === "HEARTBEAT";
+};
+
 function useProtocolRequest() {
   const { lastJsonMessage, sendJsonMessage } = useNetwork();
   const expectationsRef = useRef<PendingExpectation[]>([]);
@@ -130,6 +139,10 @@ function useProtocolRequest() {
     }
 
     const message = lastJsonMessage as unknown;
+
+    if (isHeartbeatMessage(message)) {
+      return;
+    }
     const snapshot = expectationsRef.current.slice();
 
     snapshot.forEach((expectation) => {
