@@ -23,8 +23,13 @@ module.exports = async function MSG_DIRECT(props) {
   }
 
   const { payload } = data;
-  const { recipientId, ciphertext, content_sig: contentSig, sender_pub: senderPub, timestamp } =
-    payload;
+  const {
+    recipientId,
+    ciphertext,
+    content_sig: contentSig,
+    sender_pub: senderPub,
+    timestamp,
+  } = payload;
 
   if (!recipientId || typeof recipientId !== "string") {
     sendError(socket, "INVALID_RECIPIENT", "recipientId must be provided");
@@ -32,7 +37,11 @@ module.exports = async function MSG_DIRECT(props) {
   }
 
   if (!ciphertext || typeof ciphertext !== "string") {
-    sendError(socket, "INVALID_CIPHERTEXT", "Direct messages require ciphertext");
+    sendError(
+      socket,
+      "INVALID_CIPHERTEXT",
+      "Direct messages require ciphertext",
+    );
     return;
   }
 
@@ -65,8 +74,6 @@ module.exports = async function MSG_DIRECT(props) {
     }
 
     const recipientSocket = connectionRegistry.getUserConnection(recipientId);
-    const normalizedTimestamp =
-      typeof timestamp === "number" ? timestamp : Date.now();
 
     let deliveryStatus = "recipient_unavailable";
     let deliveryError = null;
@@ -84,11 +91,10 @@ module.exports = async function MSG_DIRECT(props) {
           from: "server",
           to: recipientId,
           payload: {
-            senderId: data.from,
+            sender: data.from,
             sender_pub: senderPub,
             ciphertext,
             content_sig: contentSig,
-            timestamp: normalizedTimestamp,
           },
         });
         deliveryStatus = "delivered";
@@ -135,4 +141,3 @@ module.exports = async function MSG_DIRECT(props) {
     );
   }
 };
-

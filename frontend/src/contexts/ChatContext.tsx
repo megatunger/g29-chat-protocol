@@ -85,15 +85,16 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
               <br />
               <div className="mt-2 flex-col">
                 {usersResponse?.payload?.users?.map((user) => (
-                  <div key={user?.userID} className="mt-2">
-                    <Badge className="cursor-pointer mr-2">
-                      {user?.userID}
-                    </Badge>
-                    <span className="text-gray-500 text-xs">
+                  <div
+                    key={user?.userID}
+                    className="mt-2 flex-row flex items-center"
+                  >
+                    <Badge className="mr-2">{user?.userID}</Badge>
+                    <div className="text-gray-500 text-xs">
                       {formatDistance(new Date(user?.ts), new Date(), {
                         addSuffix: true,
                       })}
-                    </span>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -127,14 +128,16 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
               ? listResponse.payload.users
               : [];
 
-            const recipient = users.find((user) => user?.userID === recipientId);
+            const recipient = users.find(
+              (user) => user?.userID === recipientId,
+            );
 
             if (!recipient) {
               appendMessage(
                 "incoming",
                 <span className="text-red-500">
-                  User <strong>{recipientId}</strong> was not found. Use /list to
-                  see online users.
+                  User <strong>{recipientId}</strong> was not found. Use /list
+                  to see online users.
                 </span>,
                 Date.now(),
               );
@@ -183,7 +186,8 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
                 const ackSignature = typed.payload?.content_sig;
 
                 return (
-                  (typeof ackRecipient !== "string" || ackRecipient === recipientId) &&
+                  (typeof ackRecipient !== "string" ||
+                    ackRecipient === recipientId) &&
                   (typeof ackSignature !== "string" ||
                     ackSignature === directMessage.contentSignature)
                 );
@@ -297,9 +301,9 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
       typeof payload.ciphertext === "string" ? payload.ciphertext : "";
     const senderPublicKey =
       typeof payload.sender_pub === "string" ? payload.sender_pub : "";
-    const senderId =
-      typeof payload.senderId === "string"
-        ? payload.senderId
+    const sender =
+      typeof payload.sender === "string"
+        ? payload.sender
         : typeof message.from === "string"
           ? message.from
           : "unknown";
@@ -317,29 +321,37 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
 
     const displayMessage = async () => {
       try {
-        const { message: plaintext, plaintextSignatureValid, contentSignatureValid } =
-          await decryptDirectMessagePayload({
-            envelope: ciphertext,
-            senderId,
-            recipientId: currentKey.keyId,
-            senderPublicKey,
-            recipientPrivateKey: currentKey.privateKey,
-            contentSignature,
-            timestamp,
-          });
+        const {
+          message: plaintext,
+          plaintextSignatureValid,
+          contentSignatureValid,
+        } = await decryptDirectMessagePayload({
+          envelope: ciphertext,
+          sender,
+          recipientId: currentKey.keyId,
+          senderPublicKey,
+          recipientPrivateKey: currentKey.privateKey,
+          contentSignature,
+          timestamp,
+        });
 
         appendMessage(
           "incoming",
           <div>
             <div className="font-semibold text-sm text-slate-800">
-              Direct message from {senderId}
+              Direct message from {sender}
             </div>
             <div className="mt-1 whitespace-pre-wrap break-words text-slate-900">
               {plaintext}
             </div>
             <div className="mt-2 text-[11px] text-slate-500">
-              Signature: {plaintextSignatureValid ? "valid" : "invalid"}; Content
-              signature: {contentSignature ? (contentSignatureValid ? "valid" : "invalid") : "missing"}
+              Signature: {plaintextSignatureValid ? "valid" : "invalid"};
+              Content signature:{" "}
+              {contentSignature
+                ? contentSignatureValid
+                  ? "valid"
+                  : "invalid"
+                : "missing"}
             </div>
           </div>,
           timestamp,
@@ -350,7 +362,8 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
         appendMessage(
           "incoming",
           <span className="text-red-500">
-            Failed to decrypt direct message from <strong>{senderId}</strong>: {reason}
+            Failed to decrypt direct message from <strong>{sender}</strong>:{" "}
+            {reason}
           </span>,
           timestamp,
         );
