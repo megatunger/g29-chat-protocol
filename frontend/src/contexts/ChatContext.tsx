@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { formatDistance } from "date-fns";
 import useProtocolRequest from "@/services/useProtocolRequest";
 import { useNewKey } from "@/contexts/NewKeyContext";
+import useChatTransforms from "@/hooks/use-chat-transforms";
 
 type ChatDirection = "incoming" | "outgoing";
 
@@ -41,6 +42,8 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
   const { mutateAsync: sendListAllUsers } = useList();
   const { sendAndExpect } = useProtocolRequest();
   const { storedKey } = useNewKey();
+  const { createDirectMessagePayload, decryptDirectMessagePayload } =
+    useChatTransforms();
 
   const appendMessage = useCallback(
     (direction: ChatDirection, content: ReactNode, ts: number) => {
@@ -82,15 +85,16 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
               <br />
               <div className="mt-2 flex-col">
                 {usersResponse?.payload?.users?.map((user) => (
-                  <div key={user?.userID} className="mt-2">
-                    <Badge className="cursor-pointer mr-2">
-                      {user?.userID}
-                    </Badge>
-                    <span className="text-gray-500 text-xs">
+                  <div
+                    key={user?.userID}
+                    className="mt-2 flex-row flex items-center"
+                  >
+                    <Badge className="mr-2">{user?.userID}</Badge>
+                    <div className="text-gray-500 text-xs">
                       {formatDistance(new Date(user?.ts), new Date(), {
                         addSuffix: true,
                       })}
-                    </span>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -105,7 +109,6 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
 
           const match = trimmed.match(/^\/tell\s+(\S+)\s+(.+)$/);
 
-          // TODO find the recipient in the user list, grab the user object
           if (!match) {
             appendMessage(
               "incoming",
@@ -118,26 +121,48 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
           }
 
           const [, recipientId, body] = match;
-          const messageId =
-            typeof crypto !== "undefined" && "randomUUID" in crypto
-              ? crypto.randomUUID()
-              : `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
 
           try {
-            // TODO: Create a hooks for all transform function in hooks folder
+            const listResponse = await sendListAllUsers({});
+            const users = Array.isArray(listResponse?.payload?.users)
+              ? listResponse.payload.users
+              : [];
+
+            const recipient = users.find(
+              (user) => user?.userID === recipientId,
+            );
+
+            if (!recipient) {
+              appendMessage(
+                "incoming",
+                <span className="text-red-500">
+                  User <strong>{recipientId}</strong> was not found. Use /list
+                  to see online users.
+                </span>,
+                Date.now(),
+              );
+              return false;
+            }
+
+            const directMessage = await createDirectMessagePayload({
+              message: body,
+              senderId: storedKey.keyId,
+              recipientId,
+              recipientPublicKey: recipient.pubkey ?? "",
+              senderPrivateKey: storedKey.privateKey ?? "",
+            });
+
             const response = await sendAndExpect(
               {
                 type: "MSG_DIRECT",
                 from: storedKey.keyId,
                 to: serverUUID,
                 payload: {
-                  // TODO: remove message ID field
-                  messageId,
-                  // TODO: recipientId should be sender_pub, lookup from pubkey field in user object
                   recipientId,
-                  // TODO: body field should be ciphertext field, it should be encrypted RSA-OAEP(SHA-256) using function encryptAndSign in crypto.js with recipient pubkey
-                  body,
-                  // TODO: field content_sig, using function signPayload in crypto.ts, the payload is created from  "ciphertext|from|to|ts"
+                  sender_pub: storedKey.publicKey,
+                  ciphertext: directMessage.envelope,
+                  content_sig: directMessage.contentSignature,
+                  timestamp: directMessage.timestamp,
                 },
               },
               (message) => {
@@ -147,12 +172,24 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
 
                 const typed = message as {
                   type?: string;
-                  payload?: { messageId?: string | null };
+                  payload?: {
+                    recipientId?: string | null;
+                    content_sig?: string | null;
+                  };
                 };
 
+                if (typed.type !== "MSG_DIRECT_ACK") {
+                  return false;
+                }
+
+                const ackRecipient = typed.payload?.recipientId;
+                const ackSignature = typed.payload?.content_sig;
+
                 return (
-                  typed.type === "MSG_DIRECT_ACK" &&
-                  typed.payload?.messageId === messageId
+                  (typeof ackRecipient !== "string" ||
+                    ackRecipient === recipientId) &&
+                  (typeof ackSignature !== "string" ||
+                    ackSignature === directMessage.contentSignature)
                 );
               },
               {
@@ -260,34 +297,81 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
     }
 
     const payload = message.payload || {};
-    const body = typeof payload.body === "string" ? payload.body : "";
-    const senderId =
-      typeof payload.senderId === "string"
-        ? payload.senderId
+    const ciphertext =
+      typeof payload.ciphertext === "string" ? payload.ciphertext : "";
+    const senderPublicKey =
+      typeof payload.sender_pub === "string" ? payload.sender_pub : "";
+    const sender =
+      typeof payload.sender === "string"
+        ? payload.sender
         : typeof message.from === "string"
           ? message.from
           : "unknown";
+    const contentSignature =
+      typeof payload.content_sig === "string" ? payload.content_sig : null;
 
-    if (!body) {
+    const currentKey = storedKey;
+
+    if (!ciphertext || !currentKey?.privateKey) {
       return;
     }
 
     const timestamp =
       typeof payload.timestamp === "number" ? payload.timestamp : Date.now();
 
-    appendMessage(
-      "incoming",
-      <div>
-        <div className="font-semibold text-sm text-slate-800">
-          Direct message from {senderId}
-        </div>
-        <div className="mt-1 whitespace-pre-wrap break-words text-slate-900">
-          {body}
-        </div>
-      </div>,
-      timestamp,
-    );
-  }, [appendMessage, lastJsonMessage]);
+    const displayMessage = async () => {
+      try {
+        const {
+          message: plaintext,
+          plaintextSignatureValid,
+          contentSignatureValid,
+        } = await decryptDirectMessagePayload({
+          envelope: ciphertext,
+          sender,
+          recipientId: currentKey.keyId,
+          senderPublicKey,
+          recipientPrivateKey: currentKey.privateKey,
+          contentSignature,
+          timestamp,
+        });
+
+        appendMessage(
+          "incoming",
+          <div>
+            <div className="font-semibold text-sm text-slate-800">
+              Direct message from {sender}
+            </div>
+            <div className="mt-1 whitespace-pre-wrap break-words text-slate-900">
+              {plaintext}
+            </div>
+            <div className="mt-2 text-[11px] text-slate-500">
+              Signature: {plaintextSignatureValid ? "valid" : "invalid"};
+              Content signature:{" "}
+              {contentSignature
+                ? contentSignatureValid
+                  ? "valid"
+                  : "invalid"
+                : "missing"}
+            </div>
+          </div>,
+          timestamp,
+        );
+      } catch (error) {
+        const reason =
+          error instanceof Error ? error.message : "Failed to decrypt message";
+        appendMessage(
+          "incoming",
+          <span className="text-red-500">
+            Failed to decrypt direct message from <strong>{sender}</strong>:{" "}
+            {reason}
+          </span>,
+          timestamp,
+        );
+      }
+    };
+
+    void displayMessage();
+  }, [appendMessage, decryptDirectMessagePayload, lastJsonMessage, storedKey]);
 
   const value = useMemo<ChatContextValue>(
     () => ({

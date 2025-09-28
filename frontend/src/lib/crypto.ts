@@ -339,6 +339,32 @@ export class ChatCrypto {
     }
   }
 
+  /**
+   * Verify a detached RSASSA-PSS (SHA-256) signature over the supplied UTF-8 payload using the
+   * sender's public key. The signature is expected to be base64url encoded.
+   */
+  static async verifyPayloadSignature(
+    payload: string,
+    publicKey: string,
+    signature: string,
+  ): Promise<boolean> {
+    try {
+      const subtle = ensureSubtle();
+      const verificationKey = await importPublicKeyForVerify(publicKey);
+      const payloadBytes = textEncoder.encode(payload);
+      const signatureBytes = fromBase64Url(signature);
+
+      return await subtle.verify(
+        RSA_PSS_SIGN_PARAMS,
+        verificationKey,
+        signatureBytes,
+        payloadBytes,
+      );
+    } catch {
+      return false;
+    }
+  }
+
   private static describeError(error: unknown): string {
     if (typeof DOMException !== "undefined" && error instanceof DOMException) {
       return `${error.name}: ${error.message}`;
