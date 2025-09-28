@@ -32,10 +32,10 @@ const NetworkContext = createContext<NetworkContextValue | null>(null);
 
 const HEARTBEAT_INTERVAL_MS = 15_000;
 const HEARTBEAT_TIMEOUT_MS = 45_000;
-const CLIENT_HEARTBEAT_ID = "G29_CLIENT_V0";
+const CLIENT_HEARTBEAT_ID = "G29_CLIENT";
 
 const NetworkProvider = ({ children }: PropsWithChildren) => {
-  const serverUUID = "G29_SERVER_V0";
+  const serverUUID = "G29_SERVER";
   const { storedKey, sign } = useNewKey();
   const heartbeatSender = storedKey?.keyId ?? CLIENT_HEARTBEAT_ID;
   const heartbeatMessage = useCallback(
