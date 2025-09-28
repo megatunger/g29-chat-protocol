@@ -104,10 +104,14 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
           appendMessage("outgoing", trimmed, new Date().getTime());
 
           const match = trimmed.match(/^\/tell\s+(\S+)\s+(.+)$/);
+
+          // TODO find the recipient in the user list, grab the user object
           if (!match) {
             appendMessage(
               "incoming",
-              <span className="text-red-500">Usage: /tell &lt;user&gt; &lt;text&gt;</span>,
+              <span className="text-red-500">
+                Usage: /tell &lt;user&gt; &lt;text&gt;
+              </span>,
               Date.now(),
             );
             return false;
@@ -120,16 +124,20 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
               : `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
 
           try {
+            // TODO: Create a hooks for all transform function in hooks folder
             const response = await sendAndExpect(
               {
                 type: "MSG_DIRECT",
                 from: storedKey.keyId,
                 to: serverUUID,
                 payload: {
+                  // TODO: remove message ID field
                   messageId,
+                  // TODO: recipientId should be sender_pub, lookup from pubkey field in user object
                   recipientId,
+                  // TODO: body field should be ciphertext field, it should be encrypted RSA-OAEP(SHA-256) using function encryptAndSign in crypto.js with recipient pubkey
                   body,
-                  timestamp: Date.now(),
+                  // TODO: field content_sig, using function signPayload in crypto.ts, the payload is created from  "ciphertext|from|to|ts"
                 },
               },
               (message) => {
@@ -175,8 +183,8 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
             } else if (ackStatus === "recipient_unavailable") {
               ackContent = (
                 <span className="text-amber-600">
-                  <strong>{ackRecipient}</strong> is not connected locally. TODO:
-                  forward via server-to-server delivery.
+                  <strong>{ackRecipient}</strong> is not connected locally.
+                  TODO: forward via server-to-server delivery.
                 </span>
               );
             } else if (ackStatus === "delivery_failed") {
@@ -186,14 +194,14 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
                   : "Delivery failed";
               ackContent = (
                 <span className="text-red-500">
-                  Failed to deliver direct message to <strong>{ackRecipient}</strong>
-                  : {detail}
+                  Failed to deliver direct message to{" "}
+                  <strong>{ackRecipient}</strong>: {detail}
                 </span>
               );
             } else {
               ackContent = (
                 <span className="text-slate-500">
-                  Direct message status for <strong>{ackRecipient}</strong>: {" "}
+                  Direct message status for <strong>{ackRecipient}</strong>:{" "}
                   {ackStatus}
                 </span>
               );

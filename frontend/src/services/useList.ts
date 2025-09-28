@@ -6,13 +6,30 @@ import { useSendAndExpectOptions } from "@/services/constants";
 import { useMutation } from "@tanstack/react-query";
 import { useNewKey } from "@/contexts/NewKeyContext";
 
+export type useListResponse = {
+  type: string;
+  from: string;
+  to: string;
+  payload: {
+    users: Array<{
+      userID: string;
+      version: string;
+      ts: string;
+      pubkey: string;
+    }>;
+    total: number;
+    message: string;
+  };
+  ts: number;
+};
+
 function useList() {
   const { serverUUID } = useNetwork();
   const { sendAndExpect } = useProtocolRequest();
   const { storedKey } = useNewKey();
 
   return useMutation<
-    unknown,
+    useListResponse,
     unknown,
     {
       options?: useSendAndExpectOptions;
