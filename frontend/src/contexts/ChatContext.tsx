@@ -264,6 +264,73 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
           }
         }
 
+        if (trimmed.startsWith("/all ")) {
+          appendMessage("outgoing", trimmed, new Date().getTime());
+
+          const messageContent = trimmed.substring(5); // Remove '/all '
+          
+          if (!messageContent.trim()) {
+            appendMessage(
+              "incoming",
+              <span className="text-red-500">
+                Usage: /all &lt;message&gt;
+              </span>,
+              Date.now(),
+            );
+            return false;
+          }
+
+          try {
+            // Create encrypted message for public channel
+            const publicChannelMessage = await createDirectMessagePayload({
+              message: messageContent,
+              senderId: storedKey.keyId,
+              recipientId: "public",
+              recipientPublicKey: storedKey.publicKey ?? "",
+              senderPrivateKey: storedKey.privateKey ?? "",
+            });
+
+            const response = await sendAndExpect(
+              {
+                type: "MSG_PUBLIC_CHANNEL",
+                from: storedKey.keyId,
+                to: serverUUID,
+                payload: {
+                  sender_pub: storedKey.publicKey,
+                  ciphertext: publicChannelMessage.envelope,
+                  content_sig: publicChannelMessage.contentSignature,
+                  timestamp: publicChannelMessage.timestamp,
+                },
+              },
+              (message) => {
+                const typed = message as any;
+                return typed?.type === "MSG_PUBLIC_CHANNEL_ACK";
+              }
+            );
+
+            const recipients = (response as any)?.payload?.recipients || 0;
+            appendMessage(
+              "incoming",
+              <span className="text-blue-600">
+                Public message broadcast to <strong>{recipients}</strong> users.
+              </span>,
+              Date.now(),
+            );
+
+            return true;
+          } catch (error) {
+            console.error("Failed to send public message:", error);
+            appendMessage(
+              "incoming",
+              <span className="text-red-500">
+                Failed to send public message
+              </span>,
+              Date.now(),
+            );
+            return false;
+          }
+        }
+
         appendMessage("outgoing", trimmed, new Date().getTime());
         return true;
       } catch (error) {

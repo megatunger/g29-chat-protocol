@@ -7,6 +7,7 @@ const SERVER_HELLO_JOIN = require("./SERVER_HELLO_JOIN");
 const LIST = require("./LIST");
 const MSG_DIRECT = require("./MSG_DIRECT");
 const HEARTBEAT = require("./HEARTBEAT");
+const MSG_PUBLIC_CHANNEL = require("./MSG_PUBLIC_CHANNEL");
 
 const handlers = new Map([
   ["ping", ping],
@@ -16,6 +17,7 @@ const handlers = new Map([
   ["LIST", LIST],
   ["HEARTBEAT", HEARTBEAT],
   ["MSG_DIRECT", MSG_DIRECT],
+  ["MSG_PUBLIC_CHANNEL", MSG_PUBLIC_CHANNEL],
 ]);
 
 function getHandler(type) {
