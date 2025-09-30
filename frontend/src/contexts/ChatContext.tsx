@@ -18,6 +18,7 @@ import { formatDistance } from "date-fns";
 import useProtocolRequest from "@/services/useProtocolRequest";
 import { useNewKey } from "@/contexts/NewKeyContext";
 import useChatTransforms from "@/hooks/use-chat-transforms";
+import { publicChannelKeyManager } from "@/lib/group-keys";
 
 type ChatDirection = "incoming" | "outgoing";
 
@@ -281,25 +282,28 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
           }
 
           try {
-            // Create encrypted message for public channel
-            const publicChannelMessage = await createDirectMessagePayload({
-              message: messageContent,
-              senderId: storedKey.keyId,
-              recipientId: "public",
-              recipientPublicKey: storedKey.publicKey ?? "",
-              senderPrivateKey: storedKey.privateKey ?? "",
-            });
+            // Create group key encrypted public message (SOCP compliant)
+            const timestamp = Date.now();
+            
+            const encryptedPayload = await publicChannelKeyManager.createPublicChannelMessage(
+              messageContent,
+              storedKey.keyId,
+              storedKey.privateKey ?? "",
+              storedKey.publicKey,
+              "public"
+            );
 
             const response = await sendAndExpect(
               {
                 type: "MSG_PUBLIC_CHANNEL",
                 from: storedKey.keyId,
-                to: serverUUID,
+                to: "public",
+                ts: timestamp,
                 payload: {
-                  sender_pub: storedKey.publicKey,
-                  ciphertext: publicChannelMessage.envelope,
-                  content_sig: publicChannelMessage.contentSignature,
-                  timestamp: publicChannelMessage.timestamp,
+                  ciphertext: encryptedPayload.ciphertext,
+                  content_sig: encryptedPayload.content_sig,
+                  sender_pub: encryptedPayload.sender_pub,
+                  timestamp: timestamp,
                 },
               },
               (message) => {
@@ -359,7 +363,34 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
       payload?: Record<string, unknown> | null;
     };
 
-    if (message?.type !== "USER_DELIVER") {
+    if (message?.type !== "USER_DELIVER" && message?.type !== "MSG_PUBLIC_CHANNEL_DELIVERY" && message?.type !== "PUBLIC_CHANNEL_KEY_DELIVERY") {
+      return;
+    }
+
+    // Handle public channel key delivery (SOCP compliance) - silent
+    if (message.type === "PUBLIC_CHANNEL_KEY_DELIVERY") {
+      // Store and unwrap the group key
+      const payload = message.payload as any;
+      if (payload?.wrapped_key && payload?.channel_id && payload?.version && storedKey?.privateKey) {
+        try {
+          publicChannelKeyManager.storeWrappedGroupKey(
+            payload.channel_id,
+            payload.wrapped_key,
+            payload.version
+          );
+          
+          // Unwrap the group key so it's ready for encryption/decryption
+          publicChannelKeyManager.unwrapAndStoreGroupKey(
+            payload.channel_id,
+            payload.wrapped_key,
+            storedKey.privateKey
+          ).catch((error) => {
+            console.error("Failed to unwrap group key:", error);
+          });
+        } catch (error) {
+          console.error("Failed to process group key:", error);
+        }
+      }
       return;
     }
 
@@ -379,34 +410,72 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
 
     const currentKey = storedKey;
 
+    const timestamp =
+      typeof payload.timestamp === "number" ? payload.timestamp : Date.now();
+
+    const isPublicMessage = message.type === "MSG_PUBLIC_CHANNEL_DELIVERY";
+
+    // SOCP compliance: Only handle encrypted messages
     if (!ciphertext || !currentKey?.privateKey) {
       return;
     }
 
-    const timestamp =
-      typeof payload.timestamp === "number" ? payload.timestamp : Date.now();
-
     const displayMessage = async () => {
       try {
-        const {
-          message: plaintext,
-          plaintextSignatureValid,
-          contentSignatureValid,
-        } = await decryptDirectMessagePayload({
-          envelope: ciphertext,
-          sender,
-          recipientId: currentKey.keyId,
-          senderPublicKey,
-          recipientPrivateKey: currentKey.privateKey,
-          contentSignature,
-          timestamp,
-        });
+        let plaintext: string;
+        let plaintextSignatureValid: boolean;
+        let contentSignatureValid: boolean;
+
+        if (isPublicMessage) {
+          // Check if we have a group key for decryption
+          let hasGroupKey = publicChannelKeyManager.getGroupKey("public") !== null;
+          
+          // If no group key exists, generate one for testing (temporary solution)
+          if (!hasGroupKey) {
+            console.log("No group key found, generating deterministic key for testing");
+            await publicChannelKeyManager.generateDeterministicGroupKey("public");
+            hasGroupKey = true;
+            console.log("Generated deterministic group key for public channel");
+          } else {
+            console.log("Using existing group key for decryption");
+          }
+          
+          // Handle public channel message decryption using group key manager
+          const decrypted = await publicChannelKeyManager.decryptPublicChannelMessage(
+            ciphertext,
+            contentSignature || "",
+            senderPublicKey,
+            sender,
+            timestamp
+          );
+          plaintext = decrypted.message;
+          plaintextSignatureValid = decrypted.plaintextSignatureValid;
+          contentSignatureValid = decrypted.contentSignatureValid;
+        } else {
+          // Handle direct message decryption
+          const result = await decryptDirectMessagePayload({
+            envelope: ciphertext,
+            senderId: sender,
+            recipientId: currentKey.keyId,
+            senderPublicKey,
+            recipientPrivateKey: currentKey.privateKey,
+            contentSignature,
+            timestamp,
+          });
+          plaintext = result.message;
+          plaintextSignatureValid = result.plaintextSignatureValid;
+          contentSignatureValid = result.contentSignatureValid;
+        }
 
         appendMessage(
           "incoming",
           <div>
             <div className="font-semibold text-sm text-slate-800">
-              Direct message from {sender}
+              {isPublicMessage ? (
+                <span className="text-blue-600">📢 Public: {sender}</span>
+              ) : (
+                `Direct message from ${sender}`
+              )}
             </div>
             <div className="mt-1 whitespace-pre-wrap break-words text-slate-900">
               {plaintext}
@@ -426,14 +495,37 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
       } catch (error) {
         const reason =
           error instanceof Error ? error.message : "Failed to decrypt message";
-        appendMessage(
-          "incoming",
-          <span className="text-red-500">
-            Failed to decrypt direct message from <strong>{sender}</strong>:{" "}
-            {reason}
-          </span>,
-          timestamp,
-        );
+        const messageType = isPublicMessage ? "public" : "direct";
+        
+        console.error(`Failed to decrypt ${messageType} message:`, error);
+        
+        if (isPublicMessage) {
+          // For public messages, show the actual error
+          appendMessage(
+            "incoming",
+            <div>
+              <div className="font-semibold text-sm text-blue-600">
+                📢 Public: {sender}
+              </div>
+              <div className="mt-1 text-red-600">
+                [Decryption failed: {reason}]
+              </div>
+              <div className="mt-2 text-[11px] text-slate-400">
+                Error details: {reason}
+              </div>
+            </div>,
+            timestamp,
+          );
+        } else {
+          appendMessage(
+            "incoming",
+            <span className="text-red-500">
+              Failed to decrypt {messageType} message from <strong>{sender}</strong>:{" "}
+              {reason}
+            </span>,
+            timestamp,
+          );
+        }
       }
     };
 

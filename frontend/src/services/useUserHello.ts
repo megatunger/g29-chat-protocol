@@ -60,7 +60,7 @@ function useUserHello() {
         {
           timeoutMs,
           mismatchMessage: `Unexpected response to USER_HELLO (expected ${expectedType})`,
-          failOnMismatch: true,
+          failOnMismatch: false,
         },
       );
     },

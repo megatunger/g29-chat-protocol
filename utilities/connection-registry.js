@@ -58,6 +58,10 @@ function listActiveUsers() {
   return Array.from(userSockets.keys());
 }
 
+function getAllConnections() {
+  return userSockets;
+}
+
 function clearAll() {
   userSockets.clear();
   socketToUser = new WeakMap();
@@ -70,5 +74,6 @@ module.exports = {
   unregisterUser,
   unregisterSocket,
   listActiveUsers,
+  getAllConnections,
   clearAll,
 };

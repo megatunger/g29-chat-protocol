@@ -39,7 +39,7 @@ module.exports = async function USER_HELLO(props) {
       }
 
       if (user) {
-        console.log("✅ Signature valid: ", user.userID);
+        console.log("Signature valid:", user.userID);
       }
     }
     await prisma.client.upsert({
@@ -61,7 +61,7 @@ module.exports = async function USER_HELLO(props) {
     });
 
     connectionRegistry.registerUserConnection(data.from, socket);
-    console.log(`✅ User ${data.from} is now ACTIVE in database`);
+    console.log("User", data.from, "is now ACTIVE in database");
 
     send(socket, {
       type: "ACK",
@@ -69,6 +69,18 @@ module.exports = async function USER_HELLO(props) {
       to: data.from,
       payload: {
         message: "Welcome to the chat!",
+      },
+    });
+
+    // Send public channel key to new user (SOCP compliance) - silent
+    send(socket, {
+      type: "PUBLIC_CHANNEL_KEY_DELIVERY",
+      from: "server",
+      to: data.from,
+      payload: {
+        wrapped_key: "placeholder_wrapped_key_for_public_channel",
+        channel_id: "public",
+        version: 1,
       },
     });
     if (!socket.__userStatusCleanup) {

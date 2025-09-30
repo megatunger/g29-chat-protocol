@@ -8,6 +8,7 @@ const LIST = require("./LIST");
 const MSG_DIRECT = require("./MSG_DIRECT");
 const HEARTBEAT = require("./HEARTBEAT");
 const MSG_PUBLIC_CHANNEL = require("./MSG_PUBLIC_CHANNEL");
+const PUBLIC_CHANNEL_KEY_SHARE = require("./PUBLIC_CHANNEL_KEY_SHARE");
 
 const handlers = new Map([
   ["ping", ping],
@@ -18,6 +19,7 @@ const handlers = new Map([
   ["HEARTBEAT", HEARTBEAT],
   ["MSG_DIRECT", MSG_DIRECT],
   ["MSG_PUBLIC_CHANNEL", MSG_PUBLIC_CHANNEL],
+  ["PUBLIC_CHANNEL_KEY_SHARE", PUBLIC_CHANNEL_KEY_SHARE],
 ]);
 
 function getHandler(type) {
