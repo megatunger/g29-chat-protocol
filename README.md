@@ -4,6 +4,17 @@ This repository contains the reference implementation of the Secure Overlay Chat
 
 ---
 
+## Contact Points:
+For any issues on running the code, please reach out to:
+- Son Tung Hoang: a1984077@adelaide.edu.au. Phone number: 0461269613
+
+## Group Members:
+- Son Tung Hoang
+- Varuna Lingam Pavalla Maharudramurthy
+- Mustafa Tufan Keser
+- Souvik Sarker
+- Zhong Hong Su
+
 ## Key Features
 - **SOCP-compliant transport** – WebSocket framing, deterministic routing, presence gossip, acknowledgements, and health checks.
 - **End-to-end encryption** – Direct messages and public-channel payloads use RSA-4096 + RSA-OAEP and RSASSA-PSS signatures as mandated by the protocol.
@@ -40,12 +51,13 @@ This repository contains the reference implementation of the Secure Overlay Chat
 ---
 
 ## Prerequisites
-- **Node.js** ≥ 20 (Fastify 5 and Next.js 15 require modern runtime features).
-- **npm** (ships with Node). Yarn is supported, but the repo defaults to npm scripts.
+- **Node.js** ≥ 22 (Fastify 5 and Next.js 15 require modern runtime features).
+- **yarn** as the package manager 
 - **SQLite 3** (bundled with macOS/Linux; Windows users can install from <https://www.sqlite.org/download.html>).
-- **OpenSSL** (optional) for inspecting generated keys.
 
 When using a Node version manager (e.g., `nvm`), ensure `corepack enable` has been run if you prefer pnpm/yarn.
+
+> PLEASE TAKE NOTE: Node.js 22+ is required to run this project. If you have an older version installed, please upgrade to meet this requirement.
 
 ---
 
@@ -68,30 +80,17 @@ For non-development deployments replace the SQLite DSN with a production databas
 
 ```bash
 # 1. Install dependencies (Fastify, Prisma, etc.)
-npm install
+yarn install
 
 # 2. Apply migrations & generate Prisma client
-npx prisma migrate dev --schema prisma/schema.prisma
-npx prisma generate
-
-#   If migrate fails with a schema engine error:
-#     rm prisma/dev.db && npx prisma migrate dev
-#   or manually apply the SQL: sqlite3 prisma/dev.db < prisma/migrations/<timestamp>/migration.sql
+yarn prisma migrate dev
 
 # 3. Run the Fastify dev server (port 3000)
-npm run dev
-
-# 4. Production build/start (no watch mode)
-npm run start
-
-# 5. Execute backend tests (Node test runner)
-npm test
+yarn dev
 
 # 6. Inspect database records with Prisma Studio
-npm run studio
+yarn studio
 ```
-
-The Fastify dev server writes structured logs to stdout; tail `/tmp/g29-backend.log` if you redirect output as part of a background run. WebSocket traffic terminates at `/chat`.
 
 ---
 
@@ -101,25 +100,19 @@ The Fastify dev server writes structured logs to stdout; tail `/tmp/g29-backend.
 cd frontend
 
 # Install Next.js dependencies
-npm install
+yarn install
 
 # Run the development server (http://localhost:3001)
-npm run dev
+yarn dev
 
-# Build & serve production bundle
-npm run build
-npm run start
-
-# Lint TypeScript/React sources
-npm run lint
 ```
 
 The client connects to the backend WebSocket endpoint at `http://localhost:3000/chat` when `NODE_ENV !== "production"`. Update `frontend/src/constants/endpoint.ts` if your backend lives elsewhere.
 
 Run both dev servers simultaneously (two terminal windows/tabs) to interact with the full stack:
 
-1. **Backend:** `npm run dev` in the repository root.
-2. **Frontend:** `cd frontend && npm run dev` (opens on port 3001).
+1. **Backend:** `yarn dev` in the repository root.
+2. **Frontend:** `cd frontend && yarn dev` (opens on port 3001).
 
 ---
 
