@@ -160,6 +160,7 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
                 payload: {
                   sender_pub: storedKey.publicKey,
                   ciphertext: directMessage.ciphertext,
+                  // content_sig signs the ciphertext bytes so recipients can verify before decrypting
                   content_sig: directMessage.contentSignature,
                 },
               },

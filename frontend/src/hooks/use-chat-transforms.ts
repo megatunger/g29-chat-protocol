@@ -12,6 +12,7 @@ type DirectMessageTransformInput = {
 
 type DirectMessageTransformResult = {
   ciphertext: string;
+  /** RSASSA-PSS signature over the ciphertext string */
   contentSignature: string;
 };
 
@@ -24,11 +25,13 @@ type DirectMessageDecryptionInput = {
 
 type DirectMessageDecryptionResult = {
   message: string;
+  /** Whether the ciphertext signature verified against the sender's public key */
   contentSignatureValid: boolean;
 };
 
 type ParsedEnvelope = {
   ciphertext: string;
+  signature: string;
 };
 
 const parseEnvelope = (envelopeJson: string): ParsedEnvelope => {
@@ -48,7 +51,7 @@ const parseEnvelope = (envelopeJson: string): ParsedEnvelope => {
       throw new Error("Missing ciphertext in encrypted envelope");
     }
 
-    return { ciphertext: parsed.ciphertext };
+    return { ciphertext: parsed.ciphertext, signature: parsed.signature };
   } catch (error) {
     const reason =
       error instanceof Error ? error.message : "Unexpected encryption envelope";
@@ -82,6 +85,7 @@ const useChatTransforms = () => {
       );
 
       const parsedEnvelope = parseEnvelope(envelope);
+      // The legacy envelope includes a plaintext signature that we intentionally drop.
       const { ciphertext } = parsedEnvelope;
 
       const contentSignature = await ChatCrypto.signPayload(
@@ -119,6 +123,7 @@ const useChatTransforms = () => {
       let contentSignatureValid = false;
       if (contentSignature) {
         const payload = ciphertext;
+        // The signature protects the encrypted bytes, so verify before decrypting
         contentSignatureValid = await ChatCrypto.verifyPayloadSignature(
           payload,
           senderPublicKey,
