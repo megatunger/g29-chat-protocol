@@ -9,9 +9,13 @@
   "scripts": {
     "pretty": "prettier --write \"./**/*.{js,jsx,mjs,cjs,ts,tsx,json}\"",
     "generate:keypair": "node scripts/generate-keypair.js",
+    "generate:key1": "node scripts/generate-keypair.js key1",
+    "generate:key2": "node scripts/generate-keypair.js key2",
     "test": "node --test test/**/*.test.js",
     "start": "fastify start -l info app.js",
-    "dev": "fastify start -w -l info -P app.js",
+    "dev:without-key": "fastify start -w -l info -P app.js",
+    "dev": "SERVER_KEY_ID=key1 yarn dev:without-key",
+    "dev:server2": "SERVER_KEY_ID=key2 yarn dev:without-key --port 3002",
     "studio": "npx prisma studio"
   },
   "keywords": [],

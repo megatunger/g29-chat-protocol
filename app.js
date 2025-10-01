@@ -46,19 +46,25 @@ module.exports = async function (fastify, opts) {
     };
 
     const handleError = (error) => {
-      fastify.log.error(error, "Failed to send SERVER_HELLO_JOIN to introducers");
+      fastify.log.error(
+        error,
+        "Failed to send SERVER_HELLO_JOIN to introducers",
+      );
       finalize();
     };
 
     if (!Array.isArray(bootstrapServers) || bootstrapServers.length === 0) {
-      fastify.log.warn("No bootstrap servers configured; skipping join request");
+      fastify.log.warn(
+        "No bootstrap servers configured; skipping join request",
+      );
       finalize();
       return;
     }
 
-    const addressInfo = typeof fastify.server?.address === "function"
-      ? fastify.server.address()
-      : null;
+    const addressInfo =
+      typeof fastify.server?.address === "function"
+        ? fastify.server.address()
+        : null;
 
     const parsedAddress = (() => {
       if (!addressInfo) {
@@ -90,7 +96,9 @@ module.exports = async function (fastify, opts) {
     const defaultHost = process.env.SERVER_PUBLIC_HOST || "localhost";
     const hostCandidate = parsedAddress?.host;
     const host =
-      hostCandidate && hostCandidate !== "::" && hostCandidate !== "0.0.0.0"
+      hostCandidate &&
+      !hostCandidate.includes("::") &&
+      hostCandidate !== "0.0.0.0"
         ? hostCandidate
         : defaultHost;
 

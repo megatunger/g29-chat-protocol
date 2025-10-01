@@ -2,7 +2,9 @@
 
 const WebSocket = require("ws");
 
-const { buildServerHelloJoinMessage } = require("../server-messages/SERVER_HELLO_JOIN");
+const {
+  buildServerHelloJoinMessage,
+} = require("../server-messages/SERVER_HELLO_JOIN");
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 function makeServerIdentifier(host, port) {
@@ -67,12 +69,16 @@ function connectToServer({
         existing.send(JSON.stringify(message));
         return resolve({ identifier, reused: true });
       } catch (error) {
-        logger?.error?.(error, `Failed to reuse server connection for ${identifier}`);
+        logger?.error?.(
+          error,
+          `Failed to reuse server connection for ${identifier}`,
+        );
         return resolve({ identifier, reused: true, error });
       }
     }
 
     const url = `ws://${bootstrap.host}:${bootstrap.port}/chat`;
+    logger.info("Listening on %s", url);
     const ws = new WebSocket(url);
     let settled = false;
 
@@ -86,7 +92,9 @@ function connectToServer({
     const timeoutId = setTimeout(() => {
       ws.terminate();
       settle({
-        error: new Error(`Timed out connecting to ${identifier} after ${timeout}ms`),
+        error: new Error(
+          `Timed out connecting to ${identifier} after ${timeout}ms`,
+        ),
       });
     }, timeout);
 
@@ -95,17 +103,24 @@ function connectToServer({
       try {
         connectionRegistry.registerServerConnection(identifier, ws);
         attachLifecycleHooks(ws, identifier, connectionRegistry, logger);
+        logger.info?.(JSON.stringify(message));
         ws.send(JSON.stringify(message));
         settle({ reused: false });
       } catch (error) {
-        logger?.error?.(error, `Failed during SERVER_HELLO_JOIN for ${identifier}`);
+        logger?.error?.(
+          error,
+          `Failed during SERVER_HELLO_JOIN for ${identifier}`,
+        );
         settle({ error });
       }
     });
 
     ws.once("error", (error) => {
       clearTimeout(timeoutId);
-      logger?.error?.(error, `WebSocket error while connecting to ${identifier}`);
+      logger?.error?.(
+        error,
+        `WebSocket error while connecting to ${identifier}`,
+      );
       settle({ error });
     });
   });
@@ -128,7 +143,8 @@ async function connectToIntroducers({
       joinPayload && hostsMatch(joinPayload.host, bootstrap.host);
     const matchesPort =
       joinPayload &&
-      Number.parseInt(joinPayload.port, 10) === Number.parseInt(bootstrap.port, 10);
+      Number.parseInt(joinPayload.port, 10) ===
+        Number.parseInt(bootstrap.port, 10);
     const matchesKey =
       joinPayload?.pubkey && bootstrap.pubkey
         ? joinPayload.pubkey === bootstrap.pubkey
@@ -156,7 +172,9 @@ async function connectToIntroducers({
   });
 
   const results = await Promise.all(tasks);
-  const successes = results.filter((result) => !result.error && !result.skipped);
+  const successes = results.filter(
+    (result) => !result.error && !result.skipped,
+  );
   const failures = results.filter((result) => result.error);
   const skipped = results.filter((result) => result.skipped);
 
