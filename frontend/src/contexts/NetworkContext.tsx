@@ -83,9 +83,14 @@ const NetworkProvider = ({ children }: PropsWithChildren) => {
         sig = await sign(data?.payload);
       }
 
+      const ts =
+        typeof data?.ts === "number" && Number.isFinite(data.ts)
+          ? data.ts
+          : Date.now();
+
       sendJsonMessage({
         ...data,
-        ts: new Date().getTime(),
+        ts,
         sig: sig,
       });
     },

@@ -145,10 +145,15 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
               return false;
             }
 
+            const timestamp = Date.now();
+
             const directMessage = await createDirectMessagePayload({
               message: body,
               recipientPublicKey: recipient.pubkey ?? "",
               senderPrivateKey: storedKey.privateKey ?? "",
+              senderId: storedKey.keyId,
+              recipientId: recipientId,
+              timestamp,
             });
 
             const response = await sendAndExpect(
@@ -157,11 +162,13 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
                 from: storedKey.keyId,
                 to: serverUUID,
                 recipient: recipientId,
+                ts: timestamp,
                 payload: {
                   sender_pub: storedKey.publicKey,
                   ciphertext: directMessage.ciphertext,
                   // content_sig signs the ciphertext bytes so recipients can verify before decrypting
                   content_sig: directMessage.contentSignature,
+                  timestamp: directMessage.timestamp,
                 },
               },
               (message) => {
@@ -175,6 +182,7 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
                     recipient?: string | null;
                     recipientId?: string | null;
                     content_sig?: string | null;
+                    timestamp?: number | null;
                   };
                 };
 
@@ -185,12 +193,15 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
                 const ackRecipient =
                   typed.payload?.recipient ?? typed.payload?.recipientId;
                 const ackSignature = typed.payload?.content_sig;
+                const ackTimestamp = typed.payload?.timestamp;
 
                 return (
                   (typeof ackRecipient !== "string" ||
                     ackRecipient === recipientId) &&
                   (typeof ackSignature !== "string" ||
-                    ackSignature === directMessage.contentSignature)
+                    ackSignature === directMessage.contentSignature) &&
+                  (typeof ackTimestamp !== "number" ||
+                    ackTimestamp === directMessage.timestamp)
                 );
               },
               {
@@ -472,6 +483,9 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
             senderPublicKey,
             recipientPrivateKey: currentKey.privateKey,
             contentSignature,
+            senderId: sender,
+            recipientId: currentKey.keyId,
+            timestamp,
           });
           plaintext = result.message;
           contentSignatureValid = result.contentSignatureValid;

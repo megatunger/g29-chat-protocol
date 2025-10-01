@@ -31,7 +31,12 @@ module.exports = async function MSG_DIRECT(props) {
         : typeof payload.recipientId === "string"
           ? payload.recipientId
           : null;
-  const { ciphertext, content_sig: contentSig, sender_pub: senderPub } = payload;
+  const {
+    ciphertext,
+    content_sig: contentSig,
+    sender_pub: senderPub,
+    timestamp,
+  } = payload;
 
   if (!recipientId) {
     sendError(socket, "INVALID_RECIPIENT", "recipientId must be provided");
@@ -54,6 +59,11 @@ module.exports = async function MSG_DIRECT(props) {
 
   if (!contentSig || typeof contentSig !== "string") {
     sendError(socket, "INVALID_CONTENT_SIG", "content_sig must be provided");
+    return;
+  }
+
+  if (typeof timestamp !== "number" || Number.isNaN(timestamp)) {
+    sendError(socket, "INVALID_TIMESTAMP", "timestamp must be provided");
     return;
   }
 
@@ -97,6 +107,7 @@ module.exports = async function MSG_DIRECT(props) {
             sender_pub: senderPub,
             ciphertext,
             content_sig: contentSig,
+            timestamp,
           },
         });
         deliveryStatus = "delivered";
@@ -114,6 +125,7 @@ module.exports = async function MSG_DIRECT(props) {
       recipientId,
       status: deliveryStatus,
       content_sig: contentSig,
+      timestamp,
       updatedAt: new Date().toISOString(),
     };
 
