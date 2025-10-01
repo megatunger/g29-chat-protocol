@@ -216,6 +216,10 @@ web_modules/
 .env.production.local
 .env.local
 
+# Generated server keys
+keys/*
+!keys/.gitkeep
+
 # parcel-bundler cache (https://parceljs.org/)
 .cache
 .parcel-cache
