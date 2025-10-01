@@ -11,15 +11,27 @@ import { generateUserID } from "@/services/constants";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/stores/auth.store";
+import { useServerStore } from "@/stores/server.store";
+import { useNetwork } from "@/contexts/NetworkContext";
+
+type LoginFormValues = {
+  userID: string;
+  password: string;
+  serverID: string;
+};
 
 export default function LoginPage() {
   const { push } = useRouter();
   const encryptedKey = useAuthStore((state) => state.encryptedKey);
   const hasStoredKey = !!encryptedKey;
-  const form = useForm({
+  const serverHost = useServerStore((state) => state.serverHost);
+  const setServerHost = useServerStore((state) => state.setServerHost);
+  const { disconnect, serverHost: connectedServerHost } = useNetwork();
+  const form = useForm<LoginFormValues>({
     defaultValues: {
       userID: encryptedKey?.keyId ?? "",
       password: "",
+      serverID: serverHost,
     },
   });
   const {
@@ -41,7 +53,13 @@ export default function LoginPage() {
     }
   }, [encryptedKey, form]);
 
-  const onSubmit = async (values) => {
+  useEffect(() => {
+    if (!!serverHost) {
+      form.setValue("serverID", serverHost);
+    }
+  }, [serverHost, form]);
+
+  const onSubmit = async (values: LoginFormValues) => {
     const rawUserId = values.userID?.toString().trim();
     if (!rawUserId && !hasStoredKey) {
       form.setError("userID", {
@@ -49,6 +67,20 @@ export default function LoginPage() {
         message: "User ID is required",
       });
       return;
+    }
+
+    const serverId = values.serverID?.toString().trim();
+    if (!serverId) {
+      form.setError("serverID", {
+        type: "manual",
+        message: "Server ID is required",
+      });
+      return;
+    }
+
+    if (serverId !== connectedServerHost) {
+      disconnect();
+      setServerHost(serverId);
     }
 
     const userId =
@@ -119,6 +151,23 @@ export default function LoginPage() {
                     onSubmit={form.handleSubmit(onSubmit)}
                     className="space-y-8"
                   >
+                    <FormField
+                      control={form.control}
+                      name="serverID"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Server ID</FormLabel>
+                          <FormControl>
+                            <Input placeholder="localhost:3000" {...field} />
+                          </FormControl>
+                          <FormDescription>
+                            Enter the host and port of the SOCP server you want
+                            to connect to.
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
                     <FormField
                       control={form.control}
                       name="userID"

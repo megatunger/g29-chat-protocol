@@ -9,11 +9,17 @@ import {
 } from "react";
 import useWebSocket, { ReadyState } from "react-use-websocket";
 
-import { endpoint } from "@/constants/endpoint";
+import { buildEndpoint } from "@/constants/endpoint";
 import ConnectingProgress from "@/components/common/ConnectingProgress";
 import { useNewKey } from "@/contexts/NewKeyContext";
+import { useServerStore } from "@/stores/server.store";
 
 type WebSocketControls = ReturnType<typeof useWebSocket>;
+
+type OutgoingMessage = {
+  payload?: unknown;
+  [key: string]: unknown;
+};
 
 export type NetworkContextValue = Pick<
   WebSocketControls,
@@ -25,6 +31,7 @@ export type NetworkContextValue = Pick<
   | "getWebSocket"
 > & {
   serverUUID: string;
+  serverHost: string;
   disconnect: () => void;
 };
 
@@ -35,6 +42,7 @@ const HEARTBEAT_TIMEOUT_MS = 45_000;
 const CLIENT_HEARTBEAT_ID = "G29_CLIENT";
 
 const NetworkProvider = ({ children }: PropsWithChildren) => {
+  const serverHost = useServerStore((state) => state.serverHost);
   const serverUUID = "G29_SERVER";
   const { storedKey, sign } = useNewKey();
   const heartbeatSender = storedKey?.keyId ?? CLIENT_HEARTBEAT_ID;
@@ -50,6 +58,8 @@ const NetworkProvider = ({ children }: PropsWithChildren) => {
       }),
     [heartbeatSender, serverUUID],
   );
+  const endpoint = useMemo(() => buildEndpoint(serverHost), [serverHost]);
+
   const {
     lastMessage,
     lastJsonMessage,
@@ -77,7 +87,7 @@ const NetworkProvider = ({ children }: PropsWithChildren) => {
   }, [getWebSocket]);
 
   const wrappedSendJsonMessage = useCallback(
-    async (data: any) => {
+    async (data: OutgoingMessage) => {
       let sig = "";
       if (!!storedKey) {
         sig = await sign(data?.payload);
@@ -99,6 +109,7 @@ const NetworkProvider = ({ children }: PropsWithChildren) => {
       lastJsonMessage,
       readyState,
       sendMessage,
+      serverHost,
       sendJsonMessage: wrappedSendJsonMessage,
       getWebSocket,
       disconnect,
@@ -111,6 +122,7 @@ const NetworkProvider = ({ children }: PropsWithChildren) => {
       readyState,
       wrappedSendJsonMessage,
       sendMessage,
+      serverHost,
     ],
   );
 
