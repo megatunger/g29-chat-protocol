@@ -23,15 +23,17 @@ module.exports = async function MSG_DIRECT(props) {
   }
 
   const { payload } = data;
-  const {
-    recipientId,
-    ciphertext,
-    content_sig: contentSig,
-    sender_pub: senderPub,
-    timestamp,
-  } = payload;
+  const recipientId =
+    typeof data.recipient === "string"
+      ? data.recipient
+      : typeof payload.recipient === "string"
+        ? payload.recipient
+        : typeof payload.recipientId === "string"
+          ? payload.recipientId
+          : null;
+  const { ciphertext, content_sig: contentSig, sender_pub: senderPub } = payload;
 
-  if (!recipientId || typeof recipientId !== "string") {
+  if (!recipientId) {
     sendError(socket, "INVALID_RECIPIENT", "recipientId must be provided");
     return;
   }
@@ -108,6 +110,7 @@ module.exports = async function MSG_DIRECT(props) {
     }
 
     const ackPayload = {
+      recipient: recipientId,
       recipientId,
       status: deliveryStatus,
       content_sig: contentSig,

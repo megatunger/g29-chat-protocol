@@ -6,8 +6,6 @@ import { ChatCrypto } from "@/lib/crypto";
 
 type DirectMessageTransformInput = {
   message: string;
-  senderId: string;
-  recipientId: string;
   recipientPublicKey: string;
   senderPrivateKey: string;
 };
@@ -15,17 +13,13 @@ type DirectMessageTransformInput = {
 type DirectMessageTransformResult = {
   ciphertext: string;
   contentSignature: string;
-  timestamp: number;
 };
 
 type DirectMessageDecryptionInput = {
   ciphertext: string;
-  senderId: string;
-  recipientId: string;
   senderPublicKey: string;
   recipientPrivateKey: string;
   contentSignature?: string | null;
-  timestamp: number;
 };
 
 type DirectMessageDecryptionResult = {
@@ -35,7 +29,6 @@ type DirectMessageDecryptionResult = {
 
 type ParsedEnvelope = {
   ciphertext: string;
-  signature: string;
 };
 
 const parseEnvelope = (envelopeJson: string): ParsedEnvelope => {
@@ -55,7 +48,7 @@ const parseEnvelope = (envelopeJson: string): ParsedEnvelope => {
       throw new Error("Missing ciphertext in encrypted envelope");
     }
 
-    return { ciphertext: parsed.ciphertext, signature: parsed.signature };
+    return { ciphertext: parsed.ciphertext };
   } catch (error) {
     const reason =
       error instanceof Error ? error.message : "Unexpected encryption envelope";
@@ -82,8 +75,6 @@ const useChatTransforms = () => {
         throw new Error("Sender private key is required for signing");
       }
 
-      const timestamp = Date.now();
-
       const envelope = await ChatCrypto.encryptAndSign(
         message,
         recipientPublicKey,
@@ -101,7 +92,6 @@ const useChatTransforms = () => {
       return {
         ciphertext,
         contentSignature,
-        timestamp,
       };
     },
     [],

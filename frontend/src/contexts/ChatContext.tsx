@@ -147,8 +147,6 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
 
             const directMessage = await createDirectMessagePayload({
               message: body,
-              senderId: storedKey.keyId,
-              recipientId,
               recipientPublicKey: recipient.pubkey ?? "",
               senderPrivateKey: storedKey.privateKey ?? "",
             });
@@ -158,12 +156,11 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
                 type: "MSG_DIRECT",
                 from: storedKey.keyId,
                 to: serverUUID,
+                recipient: recipientId,
                 payload: {
-                  recipientId,
                   sender_pub: storedKey.publicKey,
                   ciphertext: directMessage.ciphertext,
                   content_sig: directMessage.contentSignature,
-                  timestamp: directMessage.timestamp,
                 },
               },
               (message) => {
@@ -174,6 +171,7 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
                 const typed = message as {
                   type?: string;
                   payload?: {
+                    recipient?: string | null;
                     recipientId?: string | null;
                     content_sig?: string | null;
                   };
@@ -183,7 +181,8 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
                   return false;
                 }
 
-                const ackRecipient = typed.payload?.recipientId;
+                const ackRecipient =
+                  typed.payload?.recipient ?? typed.payload?.recipientId;
                 const ackSignature = typed.payload?.content_sig;
 
                 return (
@@ -453,12 +452,9 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
           // Handle direct message decryption
           const result = await decryptDirectMessagePayload({
             ciphertext,
-            senderId: sender,
-            recipientId: currentKey.keyId,
             senderPublicKey,
             recipientPrivateKey: currentKey.privateKey,
             contentSignature,
-            timestamp,
           });
           plaintext = result.message;
           contentSignatureValid = result.contentSignatureValid;
