@@ -170,7 +170,6 @@ export class PublicChannelKeyManager {
   ): Promise<{
     message: string;
     contentSignatureValid: boolean;
-    plaintextSignatureValid: boolean;
   }> {
     try {
       // Verify content signature first
@@ -202,7 +201,6 @@ export class PublicChannelKeyManager {
       return {
         message,
         contentSignatureValid,
-        plaintextSignatureValid: true, // Not used for public channel messages
       };
     } catch (error) {
       console.error("Failed to decrypt public channel message:", error);

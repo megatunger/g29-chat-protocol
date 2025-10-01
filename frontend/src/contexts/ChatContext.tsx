@@ -161,7 +161,7 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
                 payload: {
                   recipientId,
                   sender_pub: storedKey.publicKey,
-                  ciphertext: directMessage.envelope,
+                  ciphertext: directMessage.ciphertext,
                   content_sig: directMessage.contentSignature,
                   timestamp: directMessage.timestamp,
                 },
@@ -423,7 +423,6 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
     const displayMessage = async () => {
       try {
         let plaintext: string;
-        let plaintextSignatureValid: boolean;
         let contentSignatureValid: boolean;
 
         if (isPublicMessage) {
@@ -449,12 +448,11 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
             timestamp
           );
           plaintext = decrypted.message;
-          plaintextSignatureValid = decrypted.plaintextSignatureValid;
           contentSignatureValid = decrypted.contentSignatureValid;
         } else {
           // Handle direct message decryption
           const result = await decryptDirectMessagePayload({
-            envelope: ciphertext,
+            ciphertext,
             senderId: sender,
             recipientId: currentKey.keyId,
             senderPublicKey,
@@ -463,7 +461,6 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
             timestamp,
           });
           plaintext = result.message;
-          plaintextSignatureValid = result.plaintextSignatureValid;
           contentSignatureValid = result.contentSignatureValid;
         }
 
@@ -481,8 +478,7 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
               {plaintext}
             </div>
             <div className="mt-2 text-[11px] text-slate-500">
-              Signature: {plaintextSignatureValid ? "valid" : "invalid"};
-              Content signature:{" "}
+              Ciphertext signature:{" "}
               {contentSignature
                 ? contentSignatureValid
                   ? "valid"
