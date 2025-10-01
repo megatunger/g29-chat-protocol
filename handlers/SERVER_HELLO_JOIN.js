@@ -5,6 +5,7 @@ const { send, sendError } = require("../utilities/message-utils");
 const { connectToIntroducers } = require("../utilities/server-join");
 
 const FALLBACK_SERVER_ID = process.env.SERVER_ID || "G29_SERVER";
+let lastConnectionReport = null;
 
 function normalizePort(value) {
   if (typeof value === "number") {
@@ -97,16 +98,28 @@ module.exports = async function SERVER_HELLO_JOIN(props) {
         ? connectionRegistry.listActiveServers()
         : [];
 
-    fastify.log.info(
-      {
-        attempted: bootstrapServers.length,
-        connected: connectedServers,
-        failed: failedServers,
-        skipped: skippedServers,
-        activeServers,
-      },
-      "SERVER_HELLO_JOIN connection results",
-    );
+    const connectionReport = {
+      attempted: bootstrapServers.length,
+      connected: connectedServers,
+      failed: failedServers,
+      skipped: skippedServers,
+      activeServers,
+      requester: data?.from || null,
+    };
+
+    const serializedReport = JSON.stringify(connectionReport);
+    if (serializedReport !== lastConnectionReport) {
+      fastify.log.info(
+        connectionReport,
+        "SERVER_HELLO_JOIN connection results",
+      );
+      lastConnectionReport = serializedReport;
+    } else {
+      fastify.log.debug(
+        { requester: connectionReport.requester },
+        "SERVER_HELLO_JOIN connection results unchanged",
+      );
+    }
 
     send(socket, {
       type: "SERVER_WELCOME",
