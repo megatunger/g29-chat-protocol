@@ -6,31 +6,26 @@ import { ChatCrypto } from "@/lib/crypto";
 
 type DirectMessageTransformInput = {
   message: string;
-  senderId: string;
-  recipientId: string;
   recipientPublicKey: string;
   senderPrivateKey: string;
 };
 
 type DirectMessageTransformResult = {
-  envelope: string;
+  ciphertext: string;
+  /** RSASSA-PSS signature over the ciphertext string */
   contentSignature: string;
-  timestamp: number;
 };
 
 type DirectMessageDecryptionInput = {
-  envelope: string;
-  senderId: string;
-  recipientId: string;
+  ciphertext: string;
   senderPublicKey: string;
   recipientPrivateKey: string;
   contentSignature?: string | null;
-  timestamp: number;
 };
 
 type DirectMessageDecryptionResult = {
   message: string;
-  plaintextSignatureValid: boolean;
+  /** Whether the ciphertext signature verified against the sender's public key */
   contentSignatureValid: boolean;
 };
 
@@ -69,13 +64,7 @@ const useChatTransforms = () => {
     async (
       input: DirectMessageTransformInput,
     ): Promise<DirectMessageTransformResult> => {
-      const {
-        message,
-        recipientPublicKey,
-        senderPrivateKey,
-        senderId,
-        recipientId,
-      } = input;
+      const { message, recipientPublicKey, senderPrivateKey } = input;
 
       if (!message || !message.trim()) {
         throw new Error("Cannot send an empty direct message");
@@ -89,8 +78,6 @@ const useChatTransforms = () => {
         throw new Error("Sender private key is required for signing");
       }
 
-      const timestamp = Date.now();
-
       const envelope = await ChatCrypto.encryptAndSign(
         message,
         recipientPublicKey,
@@ -98,18 +85,17 @@ const useChatTransforms = () => {
       );
 
       const parsedEnvelope = parseEnvelope(envelope);
-
-      const signaturePayload = `${parsedEnvelope.ciphertext}|${senderId}|${recipientId}|${timestamp}`;
+      // The legacy envelope includes a plaintext signature that we intentionally drop.
+      const { ciphertext } = parsedEnvelope;
 
       const contentSignature = await ChatCrypto.signPayload(
-        signaturePayload,
+        ciphertext,
         senderPrivateKey,
       );
 
       return {
-        envelope,
+        ciphertext,
         contentSignature,
-        timestamp,
       };
     },
     [],
@@ -119,17 +105,10 @@ const useChatTransforms = () => {
     async (
       input: DirectMessageDecryptionInput,
     ): Promise<DirectMessageDecryptionResult> => {
-      const {
-        envelope,
-        senderPublicKey,
-        recipientPrivateKey,
-        senderId,
-        recipientId,
-        contentSignature,
-        timestamp,
-      } = input;
+        const { ciphertext, senderPublicKey, recipientPrivateKey, contentSignature } =
+          input;
 
-      if (!envelope) {
+      if (!ciphertext) {
         throw new Error("Encrypted direct message is missing ciphertext");
       }
 
@@ -141,16 +120,10 @@ const useChatTransforms = () => {
         throw new Error("Missing recipient private key for direct message");
       }
 
-      const { message, verified } = await ChatCrypto.decryptAndVerify(
-        envelope,
-        recipientPrivateKey,
-        senderPublicKey,
-      );
-
       let contentSignatureValid = false;
       if (contentSignature) {
-        const { ciphertext } = parseEnvelope(envelope);
-        const payload = `${ciphertext}|${senderId}|${recipientId}|${timestamp}`;
+        const payload = ciphertext;
+        // The signature protects the encrypted bytes, so verify before decrypting
         contentSignatureValid = await ChatCrypto.verifyPayloadSignature(
           payload,
           senderPublicKey,
@@ -158,9 +131,13 @@ const useChatTransforms = () => {
         );
       }
 
+      const message = await ChatCrypto.decryptCiphertext(
+        ciphertext,
+        recipientPrivateKey,
+      );
+
       return {
         message,
-        plaintextSignatureValid: verified,
         contentSignatureValid,
       };
     },

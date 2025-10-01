@@ -241,6 +241,30 @@ export class ChatCrypto {
   }
 
   /**
+   * Decrypt a ciphertext string that was produced by encryptAndSign and encoded as base64url.
+   * Verification must be performed separately (for example by validating a detached signature
+   * over the ciphertext).
+   */
+  static async decryptCiphertext(
+    ciphertext: string,
+    recipientPrivateKey: string,
+  ): Promise<string> {
+    try {
+      const subtle = ensureSubtle();
+      const privateKey = await importPrivateKeyForDecrypt(recipientPrivateKey);
+      const decrypted = await subtle.decrypt(
+        { name: "RSA-OAEP" },
+        privateKey,
+        fromBase64Url(ciphertext),
+      );
+
+      return textDecoder.decode(toUint8Array(decrypted));
+    } catch (error) {
+      throw new Error(`Decryption failed: ${ChatCrypto.describeError(error)}`);
+    }
+  }
+
+  /**
    * Derive the SHA-256 fingerprint for the provided public key. This acts as a deterministic key
    * identifier and is aligned with the SOCP requirement that identifiers are UUID/unique values.
    */
