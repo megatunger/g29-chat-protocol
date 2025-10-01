@@ -8,12 +8,16 @@ import { useAuthStore } from "@/stores/auth.store";
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { useRouter } from "next/navigation";
+import { useNewKey } from "@/contexts/NewKeyContext";
 
 const ChatPage = () => {
   const [text, setText] = useState("");
   const { sendMessage, messages } = useChat();
   const { logout } = useAuthStore();
   const { replace } = useRouter();
+  const { storedKey } = useNewKey();
+
+  const chatIdentityLabel = storedKey?.keyId ?? "Unknown user";
 
   const handleLogout = () => {
     logout();
@@ -36,7 +40,12 @@ const ChatPage = () => {
       {/* Header with logout */}
       <Card className="w-full px-4">
         <div className="flex items-center justify-between">
-          <h1 className="text-xl font-bold">🔐 Secure Chat</h1>
+          <div className="flex flex-col">
+            <h1 className="text-xl font-bold">🔐 Secure Chat</h1>
+            <span className="text-sm text-muted-foreground">
+              You are chatting as {chatIdentityLabel}
+            </span>
+          </div>
           <Button variant="neutral" onClick={handleLogout}>
             Logout
           </Button>
