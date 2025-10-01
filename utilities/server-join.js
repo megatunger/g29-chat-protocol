@@ -5,9 +5,48 @@ const WebSocket = require("ws");
 const { buildServerHelloJoinMessage } = require("../server-messages/SERVER_HELLO_JOIN");
 
 const DEFAULT_TIMEOUT_MS = 10_000;
+const LOCAL_HOST_ALIASES = new Set([
+  "localhost",
+  "127.0.0.1",
+  "0.0.0.0",
+  "::",
+  "::1",
+  "[::1]",
+  "[::]",
+]);
 
 function makeServerIdentifier(host, port) {
   return `${host}:${port}`;
+}
+
+function normalizeHost(value) {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  return value.trim().toLowerCase();
+}
+
+function hostsMatch(left, right) {
+  const normalizedLeft = normalizeHost(left);
+  const normalizedRight = normalizeHost(right);
+
+  if (!normalizedLeft || !normalizedRight) {
+    return false;
+  }
+
+  if (normalizedLeft === normalizedRight) {
+    return true;
+  }
+
+  if (
+    LOCAL_HOST_ALIASES.has(normalizedLeft) &&
+    LOCAL_HOST_ALIASES.has(normalizedRight)
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 function attachLifecycleHooks(socket, identifier, connectionRegistry, logger) {
@@ -106,11 +145,17 @@ async function connectToIntroducers({
   }
 
   const tasks = bootstrapServers.map((bootstrap) => {
-    if (
+    const matchesHost =
+      joinPayload && hostsMatch(joinPayload.host, bootstrap.host);
+    const matchesPort =
       joinPayload &&
-      joinPayload.host === bootstrap.host &&
-      Number(joinPayload.port) === Number(bootstrap.port)
-    ) {
+      Number.parseInt(joinPayload.port, 10) === Number.parseInt(bootstrap.port, 10);
+    const matchesKey =
+      joinPayload?.pubkey && bootstrap.pubkey
+        ? joinPayload.pubkey === bootstrap.pubkey
+        : false;
+
+    if ((matchesHost && matchesPort) || matchesKey) {
       logger?.debug?.(
         { bootstrap },
         "Skipping bootstrap server that matches local identity",
@@ -142,4 +187,5 @@ async function connectToIntroducers({
 module.exports = {
   connectToIntroducers,
   makeServerIdentifier,
+  hostsMatch,
 };

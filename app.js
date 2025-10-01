@@ -7,12 +7,30 @@ const AutoLoad = require("@fastify/autoload");
 const { loadBootstrapServers } = require("./utilities/bootstrap-loader");
 const connectionRegistry = require("./utilities/connection-registry");
 const { connectToIntroducers } = require("./utilities/server-join");
+const {
+  resolveServerKeyOptions,
+  loadServerKeyPair,
+} = require("./utilities/server-keys");
 
 // Pass --options via CLI arguments in command to enable these options.
 const options = {};
 
 module.exports = async function (fastify, opts) {
   // Place here your custom code!
+
+  let serverIdentity;
+  try {
+    const keyOptions = resolveServerKeyOptions({ options: opts });
+    serverIdentity = await loadServerKeyPair(keyOptions);
+    fastify.decorate("serverIdentity", serverIdentity);
+    fastify.log.info(
+      { keyId: serverIdentity.keyId, directory: serverIdentity.directory },
+      "Loaded server key pair",
+    );
+  } catch (error) {
+    fastify.log.error(error, "Unable to load server key pair");
+    throw error;
+  }
 
   const bootstrapServers = loadBootstrapServers();
   fastify.decorate("bootstrapServers", bootstrapServers);
@@ -92,7 +110,7 @@ module.exports = async function (fastify, opts) {
     const joinPayload = {
       host,
       port,
-      pubkey: process.env.SERVER_PUBLIC_KEY || "UNSPECIFIED", // placeholder until real key management
+      pubkey: serverIdentity.publicKeyBase64Url,
     };
 
     try {
@@ -101,7 +119,7 @@ module.exports = async function (fastify, opts) {
         joinPayload,
         connectionRegistry,
         logger: fastify.log,
-        from: process.env.SERVER_ID || "G29_SERVER",
+        from: serverIdentity.keyId || process.env.SERVER_ID || "G29_SERVER",
       })
         .then((result) => {
           fastify.log.info(

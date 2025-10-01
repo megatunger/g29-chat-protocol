@@ -8,6 +8,7 @@
   },
   "scripts": {
     "pretty": "prettier --write \"./**/*.{js,jsx,mjs,cjs,ts,tsx,json}\"",
+    "generate:keypair": "node scripts/generate-keypair.js",
     "test": "node --test test/**/*.test.js",
     "start": "fastify start -l info app.js",
     "dev": "fastify start -w -l info -P app.js",

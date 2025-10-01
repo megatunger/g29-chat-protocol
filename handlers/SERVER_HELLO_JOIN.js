@@ -4,7 +4,7 @@ const defaultRegistry = require("../utilities/connection-registry");
 const { send, sendError } = require("../utilities/message-utils");
 const { connectToIntroducers } = require("../utilities/server-join");
 
-const DEFAULT_SERVER_ID = process.env.SERVER_ID || "G29_SERVER";
+const FALLBACK_SERVER_ID = process.env.SERVER_ID || "G29_SERVER";
 
 function normalizePort(value) {
   if (typeof value === "number") {
@@ -79,13 +79,17 @@ module.exports = async function SERVER_HELLO_JOIN(props) {
       joinPayload,
       connectionRegistry,
       logger: fastify.log,
-      from: data?.from || DEFAULT_SERVER_ID,
+      from:
+        data?.from || fastify.serverIdentity?.keyId || process.env.SERVER_ID || FALLBACK_SERVER_ID,
     });
+
+    const localServerId =
+      fastify.serverIdentity?.keyId || process.env.SERVER_ID || FALLBACK_SERVER_ID;
 
     send(socket, {
       type: "SERVER_HELLO_JOIN_RESULT",
-      from: DEFAULT_SERVER_ID,
-      to: data?.from || DEFAULT_SERVER_ID,
+      from: localServerId,
+      to: data?.from || localServerId,
       payload: {
         attempted: bootstrapServers.length,
         connected: result.successes.map((entry) => entry.identifier),
