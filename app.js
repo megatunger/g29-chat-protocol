@@ -127,7 +127,7 @@ module.exports = async function (fastify, opts) {
         joinPayload,
         connectionRegistry,
         logger: fastify.log,
-        from: serverIdentity.keyId || process.env.SERVER_ID || "G29_SERVER",
+        from: process.env.SERVER_ID || "G29_SERVER",
       })
         .then((result) => {
           fastify.log.info(

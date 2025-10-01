@@ -14,8 +14,8 @@
     "start": "fastify start -l info app.js",
     "create:db": "prisma migrate reset",
     "dev:without-key": "fastify start -w -l info -P app.js",
-    "dev": "SERVER_KEY_ID=key1 yarn dev:without-key",
-    "dev:server2": "SERVER_KEY_ID=key1 yarn dev:without-key --port 3002",
+    "dev": "SERVER_ID=G29_SERVER1 SERVER_KEY_ID=key1 yarn dev:without-key",
+    "dev:server2": "SERVER_ID=G29_SERVER2 SERVER_KEY_ID=key1 yarn dev:without-key --port 3002",
     "studio": "npx prisma studio"
   },
   "keywords": [],
