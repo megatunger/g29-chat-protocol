@@ -39,7 +39,7 @@ const ChatContext = createContext<ChatContextValue | null>(null);
 const ChatProvider = ({ children }: PropsWithChildren) => {
   const { serverUUID, lastJsonMessage } = useNetwork();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const { userKey } = useAuthStore(); // Get current user info
+  const hasEncryptedKey = useAuthStore((state) => !!state.encryptedKey);
   const { mutateAsync: sendListAllUsers } = useList();
   const { sendAndExpect } = useProtocolRequest();
   const { storedKey } = useNewKey();
@@ -67,11 +67,12 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
     },
     [],
   );
+console.log(storedKey);
 
   const sendMessageWithHistory = useCallback<ChatContextValue["sendMessage"]>(
     async (message, keep) => {
       const trimmed = message?.toString().trim();
-      if (!trimmed || !userKey || !storedKey) {
+      if (!trimmed || !hasEncryptedKey || !storedKey) {
         return false;
       }
 
@@ -348,7 +349,7 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
       sendAndExpect,
       serverUUID,
       storedKey,
-      userKey,
+      hasEncryptedKey,
     ],
   );
 

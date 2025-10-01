@@ -11,6 +11,7 @@ import {
 } from "react";
 import { useNewKey } from "@/contexts/NewKeyContext";
 import useUserHello from "@/services/useUserHello";
+import { useAuthStore } from "@/stores/auth.store";
 
 export type AuthenticationContextValue = {
   isLoggedIn: boolean;
@@ -23,7 +24,7 @@ const AuthenticationContext = createContext<AuthenticationContextValue | null>(
 const AuthenticationProvider = ({ children }: PropsWithChildren) => {
   const { storedKey } = useNewKey();
   const { replace } = useRouter();
-  const { mutateAsync: sendUserHello, isPending, error } = useUserHello();
+  const { mutateAsync: sendUserHello } = useUserHello();
 
   const isLoggedIn = !!storedKey;
 
@@ -32,12 +33,12 @@ const AuthenticationProvider = ({ children }: PropsWithChildren) => {
       sendUserHello({
         userID: storedKey.keyId,
         pubkey: storedKey.publicKey,
-      }).catch((error) => {
+      }).catch(() => {
         replace("/logout");
         console.log("Invalid key, logging out");
       });
     }
-  }, [isLoggedIn]);
+  }, [isLoggedIn, storedKey, sendUserHello, replace]);
 
   const value = useMemo<AuthenticationContextValue>(
     () => ({
@@ -69,12 +70,19 @@ const withAuthentication = <P extends object>(
   const WithAuthentication = (props: P) => {
     const router = useRouter();
     const { isLoggedIn } = useAuthentication();
+    const hasEncryptedKey = useAuthStore((state) => !!state.encryptedKey);
 
     useEffect(() => {
-      if (!isLoggedIn) {
+      if (isLoggedIn) {
+        return;
+      }
+
+      if (hasEncryptedKey) {
+        router.replace("/decrypt");
+      } else {
         router.replace("/");
       }
-    }, [isLoggedIn, router]);
+    }, [isLoggedIn, hasEncryptedKey, router]);
 
     if (!isLoggedIn) {
       return null;

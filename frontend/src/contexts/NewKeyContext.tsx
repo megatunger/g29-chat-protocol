@@ -9,6 +9,14 @@ import {
   useState,
 } from "react";
 import { ChatCrypto, type ChatKeyPair } from "@/lib/crypto";
+import {
+  decryptPrivateKey,
+  encryptPrivateKey,
+} from "@/lib/key-encryption";
+import {
+  decryptPassword,
+  encryptPassword,
+} from "@/lib/password-crypto";
 import { useAuthStore } from "@/stores/auth.store";
 
 type NewKeyContextValue = {
@@ -17,29 +25,37 @@ type NewKeyContextValue = {
   error: string | null;
   generateKey: (userId: string) => Promise<ChatKeyPair | null>;
   sign: (message: string) => Promise<string>;
-  loadKey: () => ChatKeyPair | null;
-  saveKey: (key: ChatKeyPair) => void;
+  loadKey: (password: string, expectedKeyId?: string) => Promise<ChatKeyPair | null>;
+  saveKey: (key: ChatKeyPair, password: string) => Promise<void>;
 };
 
 const NewKeyContext = createContext<NewKeyContextValue | null>(null);
 
 const NewKeyProvider = ({ children }: PropsWithChildren) => {
-  const storedKey = useAuthStore((state) => state.userKey);
-  const setUserKey = useAuthStore((state) => state.setUserKey);
+  const encryptedKey = useAuthStore((state) => state.encryptedKey);
+  const decryptedPrivateKey = useAuthStore(
+    (state) => state.decryptedPrivateKey,
+  );
+  const setEncryptedKey = useAuthStore((state) => state.setEncryptedKey);
+  const setDecryptedPrivateKey = useAuthStore(
+    (state) => state.setDecryptedPrivateKey,
+  );
+  const setLoggedIn = useAuthStore((state) => state.setLoggedIn);
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const loadKey = useCallback((): ChatKeyPair | null => {
-    return useAuthStore.getState().userKey;
-  }, []);
+  const storedKey = useMemo<ChatKeyPair | null>(() => {
+    if (!encryptedKey || !decryptedPrivateKey) {
+      return null;
+    }
 
-  const saveKey = useCallback(
-    (key: ChatKeyPair) => {
-      setUserKey(key);
-    },
-    [setUserKey],
-  );
+    return {
+      publicKey: encryptedKey.publicKey,
+      privateKey: decryptedPrivateKey,
+      keyId: encryptedKey.keyId,
+    } satisfies ChatKeyPair;
+  }, [encryptedKey, decryptedPrivateKey]);
 
   const generateKey = useCallback(
     async (userId: string): Promise<ChatKeyPair | null> => {
@@ -60,21 +76,127 @@ const NewKeyProvider = ({ children }: PropsWithChildren) => {
         setIsProcessing(false);
       }
     },
-    [saveKey],
+    [],
   );
 
-  const sign = async (message: any) => {
-    if (!storedKey || !storedKey.privateKey) {
-      throw new Error("Key not found!");
-    }
-    if (!message) {
-      throw new Error("Message was empty!");
-    }
-    return await ChatCrypto.signPayload(
-      JSON.stringify(message),
-      storedKey.privateKey,
-    );
-  };
+  const saveKey = useCallback(
+    async (key: ChatKeyPair, password: string): Promise<void> => {
+      try {
+        setIsProcessing(true);
+        setError(null);
+
+        const [encryptedPrivateKey, encryptedPassword] = await Promise.all([
+          encryptPrivateKey(key.privateKey, password),
+          encryptPassword(password),
+        ]);
+
+        setEncryptedKey({
+          publicKey: key.publicKey,
+          encryptedPrivateKey: encryptedPrivateKey.ciphertext,
+          keyId: key.keyId,
+          salt: encryptedPrivateKey.salt,
+          iv: encryptedPrivateKey.iv,
+          version: encryptedPrivateKey.version,
+          encryptedPassword,
+        });
+        setDecryptedPrivateKey(key.privateKey);
+        setLoggedIn(true);
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Failed to store key";
+        setError(message);
+        console.error("saveKey failed:", err);
+        throw err;
+      } finally {
+        setIsProcessing(false);
+      }
+    },
+    [setEncryptedKey, setDecryptedPrivateKey, setLoggedIn],
+  );
+
+  const loadKey = useCallback(
+    async (
+      password: string,
+      expectedKeyId?: string,
+    ): Promise<ChatKeyPair | null> => {
+      const currentEncrypted = useAuthStore.getState().encryptedKey;
+      if (!currentEncrypted) {
+        return null;
+      }
+
+      if (expectedKeyId && currentEncrypted.keyId !== expectedKeyId) {
+        setError(
+          "Stored key belongs to a different user. Generate a new key to proceed.",
+        );
+        return null;
+      }
+
+      try {
+        setIsProcessing(true);
+        setError(null);
+
+        if (currentEncrypted.encryptedPassword) {
+          try {
+            const storedPassword = await decryptPassword(
+              currentEncrypted.encryptedPassword,
+            );
+            if (storedPassword !== password) {
+              setError("Incorrect password");
+              setDecryptedPrivateKey(null);
+              setLoggedIn(false);
+              return null;
+            }
+          } catch (passwordError) {
+            console.error("Failed to decrypt stored password:", passwordError);
+          }
+        }
+
+        const privateKey = await decryptPrivateKey(
+          {
+            ciphertext: currentEncrypted.encryptedPrivateKey,
+            salt: currentEncrypted.salt,
+            iv: currentEncrypted.iv,
+            version: currentEncrypted.version,
+          },
+          password,
+        );
+
+        setDecryptedPrivateKey(privateKey);
+        setLoggedIn(true);
+
+        return {
+          publicKey: currentEncrypted.publicKey,
+          privateKey,
+          keyId: currentEncrypted.keyId,
+        } satisfies ChatKeyPair;
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Failed to unlock private key";
+        setError(message);
+        setDecryptedPrivateKey(null);
+        return null;
+      } finally {
+        setIsProcessing(false);
+      }
+    },
+    [setDecryptedPrivateKey, setLoggedIn],
+  );
+
+  const sign = useCallback(
+    async (message: unknown) => {
+      if (!storedKey || !storedKey.privateKey) {
+        throw new Error("Key not found!");
+      }
+      if (!message) {
+        throw new Error("Message was empty!");
+      }
+      return await ChatCrypto.signPayload(
+        JSON.stringify(message),
+        storedKey.privateKey,
+      );
+    },
+    [storedKey],
+  );
 
   const value = useMemo<NewKeyContextValue>(
     () => ({
@@ -86,7 +208,7 @@ const NewKeyProvider = ({ children }: PropsWithChildren) => {
       saveKey,
       sign,
     }),
-    [storedKey, isProcessing, error, generateKey, loadKey, saveKey],
+    [storedKey, isProcessing, error, generateKey, loadKey, saveKey, sign],
   );
 
   return (

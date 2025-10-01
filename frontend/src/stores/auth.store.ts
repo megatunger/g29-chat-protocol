@@ -1,11 +1,22 @@
-import { ChatKeyPair } from "@/lib/crypto";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
+export type PersistedEncryptedKey = {
+  publicKey: string;
+  encryptedPrivateKey: string;
+  keyId: string;
+  salt: string;
+  iv: string;
+  version: number;
+  encryptedPassword: string | null;
+};
+
 type AuthState = {
-  userKey: ChatKeyPair | null;
+  encryptedKey: PersistedEncryptedKey | null;
+  decryptedPrivateKey: string | null;
   isLoggedIn: boolean;
-  setUserKey: (key: ChatKeyPair) => void;
+  setEncryptedKey: (key: PersistedEncryptedKey | null) => void;
+  setDecryptedPrivateKey: (value: string | null) => void;
   setLoggedIn: (value: boolean) => void;
   logout: () => void;
 };
@@ -13,15 +24,25 @@ type AuthState = {
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
-      userKey: null,
+      encryptedKey: null,
+      decryptedPrivateKey: null,
       isLoggedIn: false,
-      setUserKey: (keys) => set({ userKey: keys }),
+      setEncryptedKey: (key) => set({ encryptedKey: key }),
+      setDecryptedPrivateKey: (value) => set({ decryptedPrivateKey: value }),
       setLoggedIn: (value) => set({ isLoggedIn: value }),
-      logout: () => set({ isLoggedIn: false, userKey: null }),
+      logout: () =>
+        set({
+          encryptedKey: null,
+          decryptedPrivateKey: null,
+          isLoggedIn: false,
+        }),
     }),
     {
       name: "auth",
       storage: createJSONStorage(() => localStorage),
+      partialize: (state) => ({
+        encryptedKey: state.encryptedKey,
+      }),
     },
   ),
 );

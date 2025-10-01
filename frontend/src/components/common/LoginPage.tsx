@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import {
   Form,
@@ -23,28 +24,86 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useRouter } from "next/navigation";
+import { useAuthStore } from "@/stores/auth.store";
 
 export default function LoginPage() {
   const { push } = useRouter();
+  const encryptedKey = useAuthStore((state) => state.encryptedKey);
+  const hasStoredKey = !!encryptedKey;
   const form = useForm({
     defaultValues: {
-      userID: "",
+      userID: encryptedKey?.keyId ?? "",
       password: "",
     },
   });
-  const { generateKey, isProcessing, saveKey, loadKey } = useNewKey();
-  const { mutateAsync: sendUserHello, isPending, error } = useUserHello();
+  const { generateKey, isProcessing, saveKey, loadKey, error: keyError } =
+    useNewKey();
+  const {
+    mutateAsync: sendUserHello,
+    isPending,
+    error: userHelloError,
+  } = useUserHello();
+
+  useEffect(() => {
+    if (encryptedKey?.keyId) {
+      form.setValue("userID", encryptedKey.keyId);
+    }
+  }, [encryptedKey, form]);
 
   const onSubmit = async (values) => {
-    const userId = generateUserID(values.userID);
-    const key = await generateKey(userId);
-    if (!key) throw Error("Cannot generate key!");
+    const rawUserId = values.userID?.toString().trim();
+    if (!rawUserId && !hasStoredKey) {
+      form.setError("userID", {
+        type: "manual",
+        message: "User ID is required",
+      });
+      return;
+    }
+
+    const userId = hasStoredKey && encryptedKey?.keyId
+      ? encryptedKey.keyId
+      : generateUserID(rawUserId ?? "");
+    const password = values.password?.toString() ?? "";
+
+    if (!password) {
+      form.setError("password", {
+        type: "manual",
+        message: "Password is required to protect your private key",
+      });
+      return;
+    }
+
+    let key = await loadKey(password, userId);
+
+    if (!key) {
+      if (hasStoredKey) {
+        form.setError("password", {
+          type: "manual",
+          message: "Incorrect password",
+        });
+        return;
+      }
+
+      key = await generateKey(userId);
+      if (!key) {
+        throw Error("Cannot generate key!");
+      }
+      await saveKey(key, password);
+      key = await loadKey(password, userId);
+      if (!key) {
+        form.setError("password", {
+          type: "manual",
+          message: "Unable to unlock the generated key. Please try again.",
+        });
+        return;
+      }
+    }
+
     await sendUserHello({
       userID: userId,
-      pubkey: key.publicKey.toString(),
+      pubkey: key.publicKey,
     });
-    saveKey(key);
-    loadKey();
+
     push("/chat");
   };
 
@@ -120,7 +179,10 @@ export default function LoginPage() {
                 </div>
               )}
 
-              {error && <div className="text-red-700">{error?.toString()}</div>}
+              {keyError && <div className="text-red-700">{keyError}</div>}
+              {userHelloError && (
+                <div className="text-red-700">{userHelloError?.toString()}</div>
+              )}
             </div>
           </CardContent>
         </Card>
