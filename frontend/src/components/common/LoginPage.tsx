@@ -21,11 +21,13 @@ type LoginFormValues = {
 
 export default function LoginPage() {
   const { push } = useRouter();
-  const { encryptedKey, serverHost, setServerHost } = useAuthStore((state) => ({
-    encryptedKey: state.encryptedKey,
-    serverHost: state.serverHost ?? DEFAULT_SERVER_HOST,
-    setServerHost: state.setServerHost,
-  }));
+  const { encryptedKey, serverHost, setServerHost } = useAuthStore.getState(
+    (state) => ({
+      encryptedKey: state.encryptedKey,
+      serverHost: state.serverHost ?? DEFAULT_SERVER_HOST,
+      setServerHost: state.setServerHost,
+    }),
+  );
   const hasStoredKey = !!encryptedKey;
   const form = useForm<LoginFormValues>({
     defaultValues: {

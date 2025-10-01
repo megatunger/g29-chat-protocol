@@ -25,6 +25,7 @@ export type NetworkContextValue = Pick<
   | "sendJsonMessage"
   | "getWebSocket"
 > & {
+  serverHost: string;
   serverUUID: string;
   disconnect: () => void;
 };
@@ -100,6 +101,7 @@ const NetworkProvider = ({ children }: PropsWithChildren) => {
   const value = useMemo<NetworkContextValue>(
     () => ({
       serverUUID,
+      serverHost,
       lastMessage,
       lastJsonMessage,
       readyState,
@@ -109,6 +111,7 @@ const NetworkProvider = ({ children }: PropsWithChildren) => {
       disconnect,
     }),
     [
+      serverHost,
       disconnect,
       getWebSocket,
       lastJsonMessage,
