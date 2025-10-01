@@ -7,6 +7,14 @@ const {
 } = require("../server-messages/SERVER_HELLO_JOIN");
 
 const DEFAULT_TIMEOUT_MS = 10_000;
+const DEFAULT_RECONNECT_OPTIONS = {
+  enabled: true,
+  initialDelayMs: 1_000,
+  maxDelayMs: 60_000,
+  multiplier: 2,
+};
+
+const reconnectStates = new Map();
 function makeServerIdentifier(host, port) {
   return `${host}:${port}`;
 }
@@ -67,7 +75,7 @@ function connectToServer({
     if (existing && existing.readyState === WebSocket.OPEN) {
       try {
         existing.send(JSON.stringify(message));
-        return resolve({ identifier, reused: true });
+        return resolve({ identifier, reused: true, socket: existing });
       } catch (error) {
         logger?.error?.(
           error,
@@ -78,7 +86,7 @@ function connectToServer({
     }
 
     const url = `ws://${bootstrap.host}:${bootstrap.port}/chat`;
-    logger.info("Listening on %s", url);
+    logger?.info?.({ identifier, url }, "Connecting to peer server");
     const ws = new WebSocket(url);
     let settled = false;
 
@@ -109,7 +117,7 @@ function connectToServer({
           _message?.substring(0, Math.min(_message.length, 128)),
         );
         ws.send(JSON.stringify(message));
-        settle({ reused: false });
+        settle({ reused: false, socket: ws });
       } catch (error) {
         logger?.error?.(
           error,
@@ -130,6 +138,161 @@ function connectToServer({
   });
 }
 
+function resolveReconnectOptions(autoReconnect) {
+  if (autoReconnect === false) {
+    return { ...DEFAULT_RECONNECT_OPTIONS, enabled: false };
+  }
+
+  const resolved = {
+    ...DEFAULT_RECONNECT_OPTIONS,
+    ...(autoReconnect && typeof autoReconnect === "object"
+      ? autoReconnect
+      : {}),
+  };
+
+  resolved.enabled =
+    typeof autoReconnect?.enabled === "boolean"
+      ? autoReconnect.enabled
+      : DEFAULT_RECONNECT_OPTIONS.enabled;
+  resolved.initialDelayMs = Math.max(1, resolved.initialDelayMs || 1_000);
+  resolved.multiplier = Math.max(1, resolved.multiplier || 1);
+  resolved.maxDelayMs = Math.max(resolved.initialDelayMs, resolved.maxDelayMs || 60_000);
+
+  return resolved;
+}
+
+function getReconnectState(identifier) {
+  let state = reconnectStates.get(identifier);
+  if (!state) {
+    state = {
+      attempts: 0,
+      timer: null,
+      connecting: false,
+      config: null,
+    };
+    reconnectStates.set(identifier, state);
+  }
+
+  return state;
+}
+
+function attachReconnectListeners({ identifier, socket, state, config }) {
+  if (!config.autoReconnect.enabled) {
+    return;
+  }
+
+  if (socket.__autoReconnectIdentifier === identifier) {
+    return;
+  }
+
+  const handleClose = (code, reason) => {
+    if (typeof socket.__autoReconnectCleanup === "function") {
+      socket.__autoReconnectCleanup();
+    }
+    socket.__autoReconnectIdentifier = null;
+    scheduleReconnect({
+      identifier,
+      state,
+      config,
+      reason: { code, reason },
+    });
+  };
+
+  const handleError = (error) => {
+    config.logger?.error?.(
+      error,
+      `Peer server connection error for ${identifier}`,
+    );
+  };
+
+  socket.once("close", handleClose);
+  socket.on("error", handleError);
+  socket.__autoReconnectIdentifier = identifier;
+  socket.__autoReconnectCleanup = () => {
+    socket.off("error", handleError);
+  };
+}
+
+function scheduleReconnect({ identifier, state, config, reason }) {
+  const { autoReconnect, logger } = config;
+  if (!autoReconnect.enabled) {
+    return;
+  }
+
+  if (state.timer) {
+    clearTimeout(state.timer);
+    state.timer = null;
+  }
+
+  state.attempts += 1;
+  const delay = Math.min(
+    autoReconnect.initialDelayMs *
+      Math.pow(autoReconnect.multiplier, Math.max(0, state.attempts - 1)),
+    autoReconnect.maxDelayMs,
+  );
+
+  logger?.warn?.(
+    { identifier, delay, attempts: state.attempts, reason },
+    "Scheduling reconnect to peer server",
+  );
+
+  state.timer = setTimeout(() => {
+    state.timer = null;
+    attemptServerConnectionWithState(identifier, state, config).catch((error) => {
+      logger?.error?.(error, `Unexpected error while reconnecting to ${identifier}`);
+      scheduleReconnect({ identifier, state, config, reason: "retry_failure" });
+    });
+  }, delay);
+}
+
+async function attemptServerConnectionWithState(identifier, state, config) {
+  if (state.connecting) {
+    config.logger?.debug?.(
+      { identifier },
+      "Skipping reconnect attempt while one is already running",
+    );
+    return { identifier, skipped: true };
+  }
+
+  state.connecting = true;
+  state.config = config;
+
+  try {
+    const result = await connectToServer({
+      bootstrap: config.bootstrap,
+      joinPayload: config.joinPayload,
+      connectionRegistry: config.connectionRegistry,
+      logger: config.logger,
+      from: config.from,
+      timeout: config.timeout,
+    });
+
+    if (result.error) {
+      if (config.autoReconnect.enabled) {
+        scheduleReconnect({
+          identifier,
+          state,
+          config,
+          reason: result.error?.message || "connection_error",
+        });
+      }
+    } else if (!result.skipped) {
+      state.attempts = 0;
+      if (state.timer) {
+        clearTimeout(state.timer);
+        state.timer = null;
+      }
+      if (result.socket) {
+        attachReconnectListeners({ identifier, socket: result.socket, state, config });
+      }
+    }
+
+    return result;
+  } finally {
+    state.connecting = false;
+  }
+}
+
 async function connectToIntroducers({
   bootstrapServers,
   joinPayload,
@@ -137,10 +300,13 @@ async function connectToIntroducers({
   logger,
   from,
   timeout,
+  autoReconnect,
 }) {
   if (!Array.isArray(bootstrapServers) || bootstrapServers.length === 0) {
     return { successes: [], failures: [] };
   }
+
+  const reconnectOptions = resolveReconnectOptions(autoReconnect);
 
   const tasks = bootstrapServers.map((bootstrap) => {
     const matchesHost =
@@ -165,14 +331,19 @@ async function connectToIntroducers({
       });
     }
 
-    return connectToServer({
+    const identifier = makeServerIdentifier(bootstrap.host, bootstrap.port);
+    const state = getReconnectState(identifier);
+    const config = {
       bootstrap,
       joinPayload,
       connectionRegistry,
       logger,
       from,
       timeout,
-    });
+      autoReconnect: reconnectOptions,
+    };
+
+    return attemptServerConnectionWithState(identifier, state, config);
   });
 
   const results = await Promise.all(tasks);

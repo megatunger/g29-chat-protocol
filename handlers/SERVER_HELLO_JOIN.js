@@ -2,7 +2,10 @@
 
 const defaultRegistry = require("../utilities/connection-registry");
 const { send, sendError } = require("../utilities/message-utils");
-const { connectToIntroducers } = require("../utilities/server-join");
+const {
+  connectToIntroducers,
+  makeServerIdentifier,
+} = require("../utilities/server-join");
 
 const FALLBACK_SERVER_ID = process.env.SERVER_ID || "G29_SERVER";
 let lastConnectionReport = null;
@@ -68,6 +71,24 @@ module.exports = async function SERVER_HELLO_JOIN(props) {
     return;
   }
 
+  const remoteIdentifier = makeServerIdentifier(
+    joinPayload.host,
+    joinPayload.port,
+  );
+
+  try {
+    connectionRegistry.registerServerConnection(remoteIdentifier, socket);
+    fastify.log.info(
+      { identifier: remoteIdentifier, requester: data?.from || null },
+      "Registered inbound server connection",
+    );
+  } catch (error) {
+    fastify.log.warn(
+      error,
+      `Failed to register inbound server connection for ${remoteIdentifier}`,
+    );
+  }
+
   const bootstrapServers = fastify.bootstrapServers || [];
   if (!Array.isArray(bootstrapServers) || bootstrapServers.length === 0) {
     sendError(socket, "NO_BOOTSTRAP", "No bootstrap servers configured");
@@ -104,6 +125,10 @@ module.exports = async function SERVER_HELLO_JOIN(props) {
       failed: failedServers,
       skipped: skippedServers,
       activeServers,
+      joiningServer: {
+        host: joinPayload.host,
+        port: joinPayload.port,
+      },
       requester: data?.from || null,
     };
 
