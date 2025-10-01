@@ -4,11 +4,20 @@ const { send, sendError } = require("../utilities/message-utils");
 const { PrismaClient } = require("../generated/prisma");
 const defaultRegistry = require("../utilities/connection-registry");
 const { verifyStoredUserSignature } = require("../utilities/signature-utils");
+const { buildUserAdvertiseMessage } = require("../server-messages/USER_ADVERTISE");
+
+const FALLBACK_SERVER_ID = process.env.SERVER_ID || "G29_SERVER";
 
 const prisma = new PrismaClient();
 
 module.exports = async function USER_HELLO(props) {
-  const { socket, data, meta, connectionRegistry = defaultRegistry } = props;
+  const {
+    socket,
+    data,
+    meta,
+    connectionRegistry = defaultRegistry,
+    fastify,
+  } = props;
   console.log("[USER_HELLO] Request: ");
 
   if (!data.payload) {
@@ -61,6 +70,16 @@ module.exports = async function USER_HELLO(props) {
     });
 
     connectionRegistry.registerUserConnection(data.from, socket);
+    const userMetadata =
+      data.payload.meta && typeof data.payload.meta === "object"
+        ? data.payload.meta
+        : null;
+
+    if (userMetadata) {
+      connectionRegistry.setUserMetadata(data.from, userMetadata);
+    } else {
+      connectionRegistry.removeUserMetadata(data.from);
+    }
     console.log("User", data.from, "is now ACTIVE in database");
 
     send(socket, {
@@ -83,6 +102,19 @@ module.exports = async function USER_HELLO(props) {
         version: 1,
       },
     });
+
+    const localServerId =
+      fastify?.serverIdentity?.keyId || process.env.SERVER_ID || FALLBACK_SERVER_ID;
+
+    if (typeof connectionRegistry.broadcastToServers === "function") {
+      const advertisement = buildUserAdvertiseMessage({
+        from: localServerId,
+        userId: data.from,
+        serverId: localServerId,
+        metadata: userMetadata || {},
+      });
+      connectionRegistry.broadcastToServers(advertisement);
+    }
     if (!socket.__userStatusCleanup) {
       socket.__userStatusCleanup = true;
       socket.on("close", async () => {

@@ -9,6 +9,7 @@ const HEARTBEAT = require("./HEARTBEAT");
 const MSG_PUBLIC_CHANNEL = require("./MSG_PUBLIC_CHANNEL");
 const PUBLIC_CHANNEL_KEY_SHARE = require("./PUBLIC_CHANNEL_KEY_SHARE");
 const SERVER_HELLO_JOIN = require("./SERVER_HELLO_JOIN");
+const USER_ADVERTISE = require("./USER_ADVERTISE");
 
 const handlers = new Map([
   ["ping", ping],
@@ -20,6 +21,7 @@ const handlers = new Map([
   ["MSG_PUBLIC_CHANNEL", MSG_PUBLIC_CHANNEL],
   ["PUBLIC_CHANNEL_KEY_SHARE", PUBLIC_CHANNEL_KEY_SHARE],
   ["SERVER_HELLO_JOIN", SERVER_HELLO_JOIN],
+  ["USER_ADVERTISE", USER_ADVERTISE],
 ]);
 
 function getHandler(type) {
