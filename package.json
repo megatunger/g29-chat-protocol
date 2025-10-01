@@ -28,7 +28,8 @@
     "fastify-plugin": "^5.0.0",
     "jsonwebtoken": "^9.0.2",
     "openpgp": "^6.2.2",
-    "sqlite3": "^5.1.7"
+    "sqlite3": "^5.1.7",
+    "yaml": "^2.8.1"
   },
   "devDependencies": {
     "prettier": "^3.6.2",
