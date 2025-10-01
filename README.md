@@ -97,17 +97,17 @@ additional secrets via environment variables (JWT signing keys, CORS allow-lists
 yarn install
 
 # 2. Apply migrations & generate Prisma client
+yarn prisma reset
 yarn prisma migrate dev
 
 # 3. Create private keys for backend server
-yarn generate:key1
-yarn generate:key2
+yarn generate:key
 
 # 4. Run the Fastify dev server (port 3000)
 yarn dev
 
 # If you need start another server (test server-server)
-yarn dev:server2 
+yarn dev --port 3002
 
 # 3. Inspect database records with Prisma Studio
 yarn studio
