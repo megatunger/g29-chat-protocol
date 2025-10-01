@@ -5,6 +5,7 @@ const { send, sendError } = require("../utilities/message-utils");
 const { connectToIntroducers } = require("../utilities/server-join");
 
 const FALLBACK_SERVER_ID = process.env.SERVER_ID || "G29_SERVER";
+let lastConnectionReport = null;
 
 function normalizePort(value) {
   if (typeof value === "number") {
@@ -86,18 +87,57 @@ module.exports = async function SERVER_HELLO_JOIN(props) {
     const localServerId =
       fastify.serverIdentity?.keyId || process.env.SERVER_ID || FALLBACK_SERVER_ID;
 
+    const connectedServers = result.successes.map((entry) => entry.identifier);
+    const failedServers = result.failures.map((entry) => ({
+      identifier: entry.identifier,
+      error: entry.error?.message || "Unknown error",
+    }));
+    const skippedServers = result.skipped.map((entry) => entry.identifier);
+    const activeServers =
+      typeof connectionRegistry.listActiveServers === "function"
+        ? connectionRegistry.listActiveServers()
+        : [];
+
+    const connectionReport = {
+      attempted: bootstrapServers.length,
+      connected: connectedServers,
+      failed: failedServers,
+      skipped: skippedServers,
+      activeServers,
+      requester: data?.from || null,
+    };
+
+    const serializedReport = JSON.stringify(connectionReport);
+    if (serializedReport !== lastConnectionReport) {
+      fastify.log.info(
+        connectionReport,
+        "SERVER_HELLO_JOIN connection results",
+      );
+      lastConnectionReport = serializedReport;
+    } else {
+      fastify.log.debug(
+        { requester: connectionReport.requester },
+        "SERVER_HELLO_JOIN connection results unchanged",
+      );
+    }
+
     send(socket, {
-      type: "SERVER_HELLO_JOIN_RESULT",
+      type: "SERVER_WELCOME",
       from: localServerId,
       to: data?.from || localServerId,
       payload: {
-        attempted: bootstrapServers.length,
-        connected: result.successes.map((entry) => entry.identifier),
-        failed: result.failures.map((entry) => ({
-          identifier: entry.identifier,
-          error: entry.error?.message || "Unknown error",
-        })),
-        skipped: result.skipped.map((entry) => entry.identifier),
+        assignment: {
+          id:
+            data?.payload?.requestedId ||
+            data?.from ||
+            `${joinPayload.host}:${joinPayload.port}`,
+        },
+        servers: {
+          attempted: bootstrapServers.length,
+          connected: connectedServers,
+          failed: failedServers,
+          skipped: skippedServers,
+        },
       },
     });
   } catch (error) {
