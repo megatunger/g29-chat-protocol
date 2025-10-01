@@ -4,12 +4,19 @@ const fastifyWebSockets = require("@fastify/websocket");
 const cors = require("@fastify/cors");
 const path = require("node:path");
 const AutoLoad = require("@fastify/autoload");
+const { loadBootstrapServers } = require("./utilities/bootstrap-loader");
 
 // Pass --options via CLI arguments in command to enable these options.
 const options = {};
 
 module.exports = async function (fastify, opts) {
   // Place here your custom code!
+
+  const bootstrapServers = loadBootstrapServers();
+  fastify.decorate("bootstrapServers", bootstrapServers);
+  fastify.log.info({ bootstrapServers }, "Loaded bootstrap servers");
+
+  // TODO: Send New Server -> Introducer (Network Join Request) using bootstrapServers
 
   // Do not touch the following lines
 
