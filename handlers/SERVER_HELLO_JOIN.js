@@ -86,18 +86,45 @@ module.exports = async function SERVER_HELLO_JOIN(props) {
     const localServerId =
       fastify.serverIdentity?.keyId || process.env.SERVER_ID || FALLBACK_SERVER_ID;
 
+    const connectedServers = result.successes.map((entry) => entry.identifier);
+    const failedServers = result.failures.map((entry) => ({
+      identifier: entry.identifier,
+      error: entry.error?.message || "Unknown error",
+    }));
+    const skippedServers = result.skipped.map((entry) => entry.identifier);
+    const activeServers =
+      typeof connectionRegistry.listActiveServers === "function"
+        ? connectionRegistry.listActiveServers()
+        : [];
+
+    fastify.log.info(
+      {
+        attempted: bootstrapServers.length,
+        connected: connectedServers,
+        failed: failedServers,
+        skipped: skippedServers,
+        activeServers,
+      },
+      "SERVER_HELLO_JOIN connection results",
+    );
+
     send(socket, {
-      type: "SERVER_HELLO_JOIN_RESULT",
+      type: "SERVER_WELCOME",
       from: localServerId,
       to: data?.from || localServerId,
       payload: {
-        attempted: bootstrapServers.length,
-        connected: result.successes.map((entry) => entry.identifier),
-        failed: result.failures.map((entry) => ({
-          identifier: entry.identifier,
-          error: entry.error?.message || "Unknown error",
-        })),
-        skipped: result.skipped.map((entry) => entry.identifier),
+        assignment: {
+          id:
+            data?.payload?.requestedId ||
+            data?.from ||
+            `${joinPayload.host}:${joinPayload.port}`,
+        },
+        servers: {
+          attempted: bootstrapServers.length,
+          connected: connectedServers,
+          failed: failedServers,
+          skipped: skippedServers,
+        },
       },
     });
   } catch (error) {
