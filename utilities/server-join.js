@@ -5,16 +5,6 @@ const WebSocket = require("ws");
 const { buildServerHelloJoinMessage } = require("../server-messages/SERVER_HELLO_JOIN");
 
 const DEFAULT_TIMEOUT_MS = 10_000;
-const LOCAL_HOST_ALIASES = new Set([
-  "localhost",
-  "127.0.0.1",
-  "0.0.0.0",
-  "::",
-  "::1",
-  "[::1]",
-  "[::]",
-]);
-
 function makeServerIdentifier(host, port) {
   return `${host}:${port}`;
 }
@@ -35,18 +25,7 @@ function hostsMatch(left, right) {
     return false;
   }
 
-  if (normalizedLeft === normalizedRight) {
-    return true;
-  }
-
-  if (
-    LOCAL_HOST_ALIASES.has(normalizedLeft) &&
-    LOCAL_HOST_ALIASES.has(normalizedRight)
-  ) {
-    return true;
-  }
-
-  return false;
+  return normalizedLeft === normalizedRight;
 }
 
 function attachLifecycleHooks(socket, identifier, connectionRegistry, logger) {
