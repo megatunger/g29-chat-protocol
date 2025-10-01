@@ -69,8 +69,13 @@ const useChatTransforms = () => {
     async (
       input: DirectMessageTransformInput,
     ): Promise<DirectMessageTransformResult> => {
-      const { message, recipientPublicKey, senderPrivateKey, senderId, recipientId } =
-        input;
+      const {
+        message,
+        recipientPublicKey,
+        senderPrivateKey,
+        senderId,
+        recipientId,
+      } = input;
 
       if (!message || !message.trim()) {
         throw new Error("Cannot send an empty direct message");
@@ -175,4 +180,3 @@ export type {
   DirectMessageDecryptionResult,
 };
 export default useChatTransforms;
-

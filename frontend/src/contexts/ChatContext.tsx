@@ -67,7 +67,6 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
     },
     [],
   );
-console.log(storedKey);
 
   const sendMessageWithHistory = useCallback<ChatContextValue["sendMessage"]>(
     async (message, keep) => {
@@ -270,13 +269,11 @@ console.log(storedKey);
           appendMessage("outgoing", trimmed, new Date().getTime());
 
           const messageContent = trimmed.substring(5); // Remove '/all '
-          
+
           if (!messageContent.trim()) {
             appendMessage(
               "incoming",
-              <span className="text-red-500">
-                Usage: /all &lt;message&gt;
-              </span>,
+              <span className="text-red-500">Usage: /all &lt;message&gt;</span>,
               Date.now(),
             );
             return false;
@@ -285,14 +282,15 @@ console.log(storedKey);
           try {
             // Create group key encrypted public message (SOCP compliant)
             const timestamp = Date.now();
-            
-            const encryptedPayload = await publicChannelKeyManager.createPublicChannelMessage(
-              messageContent,
-              storedKey.keyId,
-              storedKey.privateKey ?? "",
-              storedKey.publicKey,
-              "public"
-            );
+
+            const encryptedPayload =
+              await publicChannelKeyManager.createPublicChannelMessage(
+                messageContent,
+                storedKey.keyId,
+                storedKey.privateKey ?? "",
+                storedKey.publicKey,
+                "public",
+              );
 
             const response = await sendAndExpect(
               {
@@ -310,7 +308,7 @@ console.log(storedKey);
               (message) => {
                 const typed = message as any;
                 return typed?.type === "MSG_PUBLIC_CHANNEL_ACK";
-              }
+              },
             );
 
             const recipients = (response as any)?.payload?.recipients || 0;
@@ -364,7 +362,11 @@ console.log(storedKey);
       payload?: Record<string, unknown> | null;
     };
 
-    if (message?.type !== "USER_DELIVER" && message?.type !== "MSG_PUBLIC_CHANNEL_DELIVERY" && message?.type !== "PUBLIC_CHANNEL_KEY_DELIVERY") {
+    if (
+      message?.type !== "USER_DELIVER" &&
+      message?.type !== "MSG_PUBLIC_CHANNEL_DELIVERY" &&
+      message?.type !== "PUBLIC_CHANNEL_KEY_DELIVERY"
+    ) {
       return;
     }
 
@@ -372,22 +374,29 @@ console.log(storedKey);
     if (message.type === "PUBLIC_CHANNEL_KEY_DELIVERY") {
       // Store and unwrap the group key
       const payload = message.payload as any;
-      if (payload?.wrapped_key && payload?.channel_id && payload?.version && storedKey?.privateKey) {
+      if (
+        payload?.wrapped_key &&
+        payload?.channel_id &&
+        payload?.version &&
+        storedKey?.privateKey
+      ) {
         try {
           publicChannelKeyManager.storeWrappedGroupKey(
             payload.channel_id,
             payload.wrapped_key,
-            payload.version
+            payload.version,
           );
-          
+
           // Unwrap the group key so it's ready for encryption/decryption
-          publicChannelKeyManager.unwrapAndStoreGroupKey(
-            payload.channel_id,
-            payload.wrapped_key,
-            storedKey.privateKey
-          ).catch((error) => {
-            console.error("Failed to unwrap group key:", error);
-          });
+          publicChannelKeyManager
+            .unwrapAndStoreGroupKey(
+              payload.channel_id,
+              payload.wrapped_key,
+              storedKey.privateKey,
+            )
+            .catch((error) => {
+              console.error("Failed to unwrap group key:", error);
+            });
         } catch (error) {
           console.error("Failed to process group key:", error);
         }
@@ -429,26 +438,32 @@ console.log(storedKey);
 
         if (isPublicMessage) {
           // Check if we have a group key for decryption
-          let hasGroupKey = publicChannelKeyManager.getGroupKey("public") !== null;
-          
+          let hasGroupKey =
+            publicChannelKeyManager.getGroupKey("public") !== null;
+
           // If no group key exists, generate one for testing (temporary solution)
           if (!hasGroupKey) {
-            console.log("No group key found, generating deterministic key for testing");
-            await publicChannelKeyManager.generateDeterministicGroupKey("public");
+            console.log(
+              "No group key found, generating deterministic key for testing",
+            );
+            await publicChannelKeyManager.generateDeterministicGroupKey(
+              "public",
+            );
             hasGroupKey = true;
             console.log("Generated deterministic group key for public channel");
           } else {
             console.log("Using existing group key for decryption");
           }
-          
+
           // Handle public channel message decryption using group key manager
-          const decrypted = await publicChannelKeyManager.decryptPublicChannelMessage(
-            ciphertext,
-            contentSignature || "",
-            senderPublicKey,
-            sender,
-            timestamp
-          );
+          const decrypted =
+            await publicChannelKeyManager.decryptPublicChannelMessage(
+              ciphertext,
+              contentSignature || "",
+              senderPublicKey,
+              sender,
+              timestamp,
+            );
           plaintext = decrypted.message;
           plaintextSignatureValid = decrypted.plaintextSignatureValid;
           contentSignatureValid = decrypted.contentSignatureValid;
@@ -497,9 +512,9 @@ console.log(storedKey);
         const reason =
           error instanceof Error ? error.message : "Failed to decrypt message";
         const messageType = isPublicMessage ? "public" : "direct";
-        
+
         console.error(`Failed to decrypt ${messageType} message:`, error);
-        
+
         if (isPublicMessage) {
           // For public messages, show the actual error
           appendMessage(
@@ -521,8 +536,8 @@ console.log(storedKey);
           appendMessage(
             "incoming",
             <span className="text-red-500">
-              Failed to decrypt {messageType} message from <strong>{sender}</strong>:{" "}
-              {reason}
+              Failed to decrypt {messageType} message from{" "}
+              <strong>{sender}</strong>: {reason}
             </span>,
             timestamp,
           );

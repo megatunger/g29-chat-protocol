@@ -9,14 +9,8 @@ import {
   useState,
 } from "react";
 import { ChatCrypto, type ChatKeyPair } from "@/lib/crypto";
-import {
-  decryptPrivateKey,
-  encryptPrivateKey,
-} from "@/lib/key-encryption";
-import {
-  decryptPassword,
-  encryptPassword,
-} from "@/lib/password-crypto";
+import { decryptPrivateKey, encryptPrivateKey } from "@/lib/key-encryption";
+import { decryptPassword, encryptPassword } from "@/lib/password-crypto";
 import { useAuthStore } from "@/stores/auth.store";
 
 type NewKeyContextValue = {
@@ -25,7 +19,10 @@ type NewKeyContextValue = {
   error: string | null;
   generateKey: (userId: string) => Promise<ChatKeyPair | null>;
   sign: (message: string) => Promise<string>;
-  loadKey: (password: string, expectedKeyId?: string) => Promise<ChatKeyPair | null>;
+  loadKey: (
+    password: string,
+    expectedKeyId?: string,
+  ) => Promise<ChatKeyPair | null>;
   saveKey: (key: ChatKeyPair, password: string) => Promise<void>;
 };
 

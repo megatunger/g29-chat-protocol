@@ -2,8 +2,21 @@
 
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useEffect } from "react";
@@ -63,12 +76,17 @@ const DecryptPage = () => {
               <h2 className="text-3xl">🔓 Unlock Key</h2>
             </CardTitle>
             <CardDescription>
-              {encryptedKey ? `Enter the password for ${encryptedKey.keyId}` : "No key found"}
+              {encryptedKey
+                ? `Enter the password for ${encryptedKey.keyId}`
+                : "No key found"}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+              <form
+                onSubmit={form.handleSubmit(onSubmit)}
+                className="space-y-6"
+              >
                 <FormField
                   control={form.control}
                   name="password"
@@ -76,13 +94,21 @@ const DecryptPage = () => {
                     <FormItem>
                       <FormLabel>Password</FormLabel>
                       <FormControl>
-                        <Input type="password" placeholder="••••••••" {...field} />
+                        <Input
+                          type="password"
+                          placeholder="••••••••"
+                          {...field}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
-                <Button type="submit" className="w-full" disabled={isProcessing}>
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={isProcessing}
+                >
                   {isProcessing ? "Decrypting..." : "Unlock"}
                 </Button>
                 {keyError && <div className="text-red-700">{keyError}</div>}

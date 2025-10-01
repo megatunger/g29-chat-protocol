@@ -4,25 +4,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useEffect } from "react";
 import { useForm } from "react-hook-form";
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useNewKey } from "@/contexts/NewKeyContext";
 import useUserHello from "@/services/useUserHello";
 import { generateUserID } from "@/services/constants";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/stores/auth.store";
 
@@ -36,8 +22,13 @@ export default function LoginPage() {
       password: "",
     },
   });
-  const { generateKey, isProcessing, saveKey, loadKey, error: keyError } =
-    useNewKey();
+  const {
+    generateKey,
+    isProcessing,
+    saveKey,
+    loadKey,
+    error: keyError,
+  } = useNewKey();
   const {
     mutateAsync: sendUserHello,
     isPending,
@@ -60,9 +51,10 @@ export default function LoginPage() {
       return;
     }
 
-    const userId = hasStoredKey && encryptedKey?.keyId
-      ? encryptedKey.keyId
-      : generateUserID(rawUserId ?? "");
+    const userId =
+      hasStoredKey && encryptedKey?.keyId
+        ? encryptedKey.keyId
+        : generateUserID(rawUserId ?? "");
     const password = values.password?.toString() ?? "";
 
     if (!password) {

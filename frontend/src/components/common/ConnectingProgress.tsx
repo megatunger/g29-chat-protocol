@@ -7,7 +7,10 @@ type ConnectingProgressProps = {
   readyState: ReadyState;
 };
 
-const stateCopy: Record<ReadyState, { title: string; subtitle: string; progress: number }> = {
+const stateCopy: Record<
+  ReadyState,
+  { title: string; subtitle: string; progress: number }
+> = {
   [ReadyState.UNINSTANTIATED]: {
     title: "Preparing connection",
     subtitle: "Initializing client components.",
