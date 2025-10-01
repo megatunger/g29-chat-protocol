@@ -11,15 +11,27 @@ import { generateUserID } from "@/services/constants";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/stores/auth.store";
+import { DEFAULT_SERVER_HOST } from "@/constants/endpoint";
+
+type LoginFormValues = {
+  userID: string;
+  password: string;
+  serverHost: string;
+};
 
 export default function LoginPage() {
   const { push } = useRouter();
-  const encryptedKey = useAuthStore((state) => state.encryptedKey);
+  const { encryptedKey, serverHost, setServerHost } = useAuthStore((state) => ({
+    encryptedKey: state.encryptedKey,
+    serverHost: state.serverHost ?? DEFAULT_SERVER_HOST,
+    setServerHost: state.setServerHost,
+  }));
   const hasStoredKey = !!encryptedKey;
-  const form = useForm({
+  const form = useForm<LoginFormValues>({
     defaultValues: {
       userID: encryptedKey?.keyId ?? "",
       password: "",
+      serverHost: serverHost ?? DEFAULT_SERVER_HOST,
     },
   });
   const {
@@ -41,7 +53,11 @@ export default function LoginPage() {
     }
   }, [encryptedKey, form]);
 
-  const onSubmit = async (values) => {
+  useEffect(() => {
+    form.setValue("serverHost", serverHost ?? DEFAULT_SERVER_HOST);
+  }, [form, serverHost]);
+
+  const onSubmit = async (values: LoginFormValues) => {
     const rawUserId = values.userID?.toString().trim();
     if (!rawUserId && !hasStoredKey) {
       form.setError("userID", {
@@ -56,6 +72,7 @@ export default function LoginPage() {
         ? encryptedKey.keyId
         : generateUserID(rawUserId ?? "");
     const password = values.password?.toString() ?? "";
+    const inputServerHost = values.serverHost?.toString().trim();
 
     if (!password) {
       form.setError("password", {
@@ -64,6 +81,12 @@ export default function LoginPage() {
       });
       return;
     }
+
+    const normalizedServerHost =
+      inputServerHost && inputServerHost.length > 0
+        ? inputServerHost
+        : DEFAULT_SERVER_HOST;
+    setServerHost(normalizedServerHost);
 
     let key = await loadKey(password, userId);
 
@@ -119,6 +142,23 @@ export default function LoginPage() {
                     onSubmit={form.handleSubmit(onSubmit)}
                     className="space-y-8"
                   >
+                    <FormField
+                      control={form.control}
+                      name="serverHost"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Server Host</FormLabel>
+                          <FormControl>
+                            <Input placeholder="localhost:3000" {...field} />
+                          </FormControl>
+                          <FormDescription>
+                            Enter the host and port of the SOCP server you want
+                            to connect to.
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
                     <FormField
                       control={form.control}
                       name="userID"

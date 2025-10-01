@@ -9,9 +9,10 @@ import {
 } from "react";
 import useWebSocket, { ReadyState } from "react-use-websocket";
 
-import { endpoint } from "@/constants/endpoint";
+import { buildEndpoint, DEFAULT_SERVER_HOST } from "@/constants/endpoint";
 import ConnectingProgress from "@/components/common/ConnectingProgress";
 import { useNewKey } from "@/contexts/NewKeyContext";
+import { useAuthStore } from "@/stores/auth.store";
 
 type WebSocketControls = ReturnType<typeof useWebSocket>;
 
@@ -36,6 +37,9 @@ const CLIENT_HEARTBEAT_ID = "G29_CLIENT";
 
 const NetworkProvider = ({ children }: PropsWithChildren) => {
   const serverUUID = "G29_SERVER";
+  const serverHost = useAuthStore(
+    (state) => state.serverHost ?? DEFAULT_SERVER_HOST,
+  );
   const { storedKey, sign } = useNewKey();
   const heartbeatSender = storedKey?.keyId ?? CLIENT_HEARTBEAT_ID;
   const heartbeatMessage = useCallback(
@@ -50,6 +54,7 @@ const NetworkProvider = ({ children }: PropsWithChildren) => {
       }),
     [heartbeatSender, serverUUID],
   );
+  const socketUrl = useMemo(() => buildEndpoint(serverHost), [serverHost]);
   const {
     lastMessage,
     lastJsonMessage,
@@ -57,7 +62,7 @@ const NetworkProvider = ({ children }: PropsWithChildren) => {
     sendMessage,
     sendJsonMessage,
     getWebSocket,
-  } = useWebSocket(endpoint, {
+  } = useWebSocket(socketUrl, {
     share: true,
     reconnectAttempts: 3,
     reconnectInterval: 3000,
