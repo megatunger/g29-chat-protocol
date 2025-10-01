@@ -115,7 +115,10 @@ export default function LoginPage() {
       pubkey: key.publicKey,
     });
 
-    push("/chat");
+    // a magic fix for not redirect after login
+    setTimeout(() => {
+      window.location.href = "/";
+    }, 1000);
   };
 
   return (
