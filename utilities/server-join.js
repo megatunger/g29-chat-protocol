@@ -103,7 +103,11 @@ function connectToServer({
       try {
         connectionRegistry.registerServerConnection(identifier, ws);
         attachLifecycleHooks(ws, identifier, connectionRegistry, logger);
-        logger.info?.(JSON.stringify(message));
+        const _message = JSON.stringify(message);
+        logger.info?.(
+          "Receiving message from another server: %s",
+          _message?.substring(0, Math.min(_message.length, 128)),
+        );
         ws.send(JSON.stringify(message));
         settle({ reused: false });
       } catch (error) {
