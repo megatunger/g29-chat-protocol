@@ -4,6 +4,7 @@ const defaultRegistry = require("../utilities/connection-registry");
 const { sendError, sendServerMessage } = require("../utilities/message-utils");
 const { connectToIntroducers } = require("../utilities/server-join");
 const { PrismaClient } = require("../generated/prisma");
+const { subMinutes } = require("date-fns");
 
 const FALLBACK_SERVER_ID = process.env.SERVER_ID || "G29_SERVER";
 let lastConnectionReport = null;
@@ -31,7 +32,9 @@ function validatePayload(payload) {
 
   const host = typeof payload.host === "string" ? payload.host.trim() : "";
   if (!host) {
-    throw new Error("SERVER_HELLO_JOIN payload.host must be a non-empty string");
+    throw new Error(
+      "SERVER_HELLO_JOIN payload.host must be a non-empty string",
+    );
   }
 
   const port = normalizePort(payload.port);
@@ -44,19 +47,16 @@ function validatePayload(payload) {
   const pubkey =
     typeof payload.pubkey === "string" ? payload.pubkey.trim() : undefined;
   if (!pubkey) {
-    throw new Error("SERVER_HELLO_JOIN payload.pubkey must be a non-empty string");
+    throw new Error(
+      "SERVER_HELLO_JOIN payload.pubkey must be a non-empty string",
+    );
   }
 
   return { host, port, pubkey };
 }
 
 module.exports = async function SERVER_HELLO_JOIN(props) {
-  const {
-    socket,
-    data,
-    fastify,
-    connectionRegistry = defaultRegistry,
-  } = props;
+  const { socket, data, fastify, connectionRegistry = defaultRegistry } = props;
 
   if (!fastify) {
     throw new Error("SERVER_HELLO_JOIN handler requires fastify instance");
@@ -84,11 +84,16 @@ module.exports = async function SERVER_HELLO_JOIN(props) {
       logger: fastify.log,
       serverIdentity: fastify.serverIdentity,
       from:
-        data?.from || fastify.serverIdentity?.keyId || process.env.SERVER_ID || FALLBACK_SERVER_ID,
+        data?.from ||
+        fastify.serverIdentity?.keyId ||
+        process.env.SERVER_ID ||
+        FALLBACK_SERVER_ID,
     });
 
     const localServerId =
-      fastify.serverIdentity?.keyId || process.env.SERVER_ID || FALLBACK_SERVER_ID;
+      fastify.serverIdentity?.keyId ||
+      process.env.SERVER_ID ||
+      FALLBACK_SERVER_ID;
 
     const connectedServers = result.successes.map((entry) => entry.identifier);
     const failedServers = result.failures.map((entry) => ({
@@ -127,15 +132,24 @@ module.exports = async function SERVER_HELLO_JOIN(props) {
     let activeUsers = [];
     try {
       activeUsers = await prisma.client.findMany({
-        where: { isActive: true },
+        where: {
+          isActive: true,
+          ts: {
+            gte: subMinutes(new Date().getTime(), 10),
+          },
+        },
         select: { userID: true, pubkey: true },
         orderBy: { ts: "desc" },
       });
     } catch (error) {
-      fastify.log.error(error, "Failed to load active users for SERVER_WELCOME");
+      fastify.log.error(
+        error,
+        "Failed to load active users for SERVER_WELCOME",
+      );
     }
 
-    const { host: serverHost, port: serverPort } = resolveServerAddress(fastify);
+    const { host: serverHost, port: serverPort } =
+      resolveServerAddress(fastify);
     const clients = activeUsers.map((user) => ({
       user_id: user.userID,
       host: serverHost,
@@ -187,7 +201,8 @@ function resolveServerAddress(fastify) {
   };
 
   let host = defaultHost;
-  let port = defaultPortCandidates.find((candidate) => pickPort(candidate)) || 3000;
+  let port =
+    defaultPortCandidates.find((candidate) => pickPort(candidate)) || 3000;
   port = pickPort(port) || 3000;
 
   if (typeof addressInfo === "string") {
