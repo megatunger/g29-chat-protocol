@@ -3,15 +3,72 @@
 const { send, sendError } = require("../utilities/message-utils");
 const { PrismaClient } = require("../generated/prisma");
 const { verifyStoredUserSignature } = require("../utilities/signature-utils");
+const defaultRegistry = require("../utilities/connection-registry");
+const {
+  connectToIntroducers,
+  resolveServerJoinPayload,
+} = require("../utilities/server-join");
 const { subMinutes } = require("date-fns");
 
 const prisma = new PrismaClient();
+const FALLBACK_SERVER_ID = process.env.SERVER_ID || "G29_SERVER";
 
 module.exports = async function LIST(props) {
-  const { socket, data, meta } = props;
+  const {
+    socket,
+    data,
+    meta,
+    fastify,
+    connectionRegistry = defaultRegistry,
+  } = props;
   console.log("[LIST] Request from:", data.from);
 
   try {
+    const { valid, user } = await verifyStoredUserSignature({
+      prismaClient: prisma,
+      userId: data.from,
+      payload: data.payload,
+      signature: data.sig,
+    });
+
+    if (!valid) {
+      sendError(socket, "INVALID_SIG", "Signature invalid!");
+      return;
+    }
+
+    if (user) {
+      console.log("✅ Signature valid: ", user.userID);
+    }
+
+    if (fastify) {
+      const bootstrapServers = fastify.bootstrapServers || [];
+      if (Array.isArray(bootstrapServers) && bootstrapServers.length > 0) {
+        const joinPayload = resolveServerJoinPayload({ fastify });
+        if (joinPayload) {
+          try {
+            await connectToIntroducers({
+              bootstrapServers,
+              joinPayload,
+              connectionRegistry,
+              logger: fastify.log,
+              from: fastify.serverIdentity?.keyId || FALLBACK_SERVER_ID,
+              serverIdentity: fastify.serverIdentity,
+              fastify,
+            });
+          } catch (error) {
+            fastify.log?.warn?.(
+              error,
+              "LIST failed to refresh introducer connections",
+            );
+          }
+        } else {
+          fastify.log?.debug?.(
+            "LIST request skipped introducer refresh due to missing join payload",
+          );
+        }
+      }
+    }
+
     const activeUsers = await prisma.client.findMany({
       where: {
         isActive: true,
@@ -32,29 +89,47 @@ module.exports = async function LIST(props) {
 
     console.log(`Found ${activeUsers.length} ACTIVE users`);
 
-    const { valid, user } = await verifyStoredUserSignature({
-      prismaClient: prisma,
-      userId: data.from,
-      payload: data.payload,
-      signature: data.sig,
-    });
-
-    if (!valid) {
-      sendError(socket, "INVALID_SIG", "Signature invalid!");
-      return;
+    let externalUsers = [];
+    try {
+      if (typeof connectionRegistry.listExternalUsers === "function") {
+        externalUsers = connectionRegistry.listExternalUsers();
+      }
+    } catch (error) {
+      console.warn("Failed to list external users", error);
     }
 
-    if (user) {
-      console.log("✅ Signature valid: ", user.userID);
-    }
+    const seenUserIds = new Set(activeUsers.map((user) => user.userID));
+    const normalizedExternalUsers = externalUsers
+      .filter((user) => user && typeof user.userID === "string")
+      .filter((user) => {
+        if (seenUserIds.has(user.userID)) {
+          return false;
+        }
+        seenUserIds.add(user.userID);
+        return true;
+      })
+      .map((user) => ({
+        userID: user.userID,
+        version: user.version || "external",
+        ts:
+          typeof user.ts === "number"
+            ? new Date(user.ts)
+            : user.ts || new Date(),
+        pubkey: user.pubkey || null,
+        host: user.host || null,
+        port: user.port || null,
+        sourceServer: user.sourceServer || null,
+      }));
+
+    const combinedUsers = [...activeUsers, ...normalizedExternalUsers];
     send(socket, {
       type: "USER_LIST",
       from: "server",
       to: data.from,
       payload: {
-        users: activeUsers,
-        total: activeUsers.length,
-        message: `Found ${activeUsers.length} active users online`,
+        users: combinedUsers,
+        total: combinedUsers.length,
+        message: `Found ${combinedUsers.length} active users online`,
       },
     });
   } catch (error) {

@@ -5,9 +5,143 @@ const WebSocket = require("ws");
 const {
   buildServerHelloJoinMessage,
 } = require("../server-messages/SERVER_HELLO_JOIN");
-const { prepareServerMessageEnvelope } = require("./message-utils");
+const {
+  prepareServerMessageEnvelope,
+  parseMessage,
+} = require("./message-utils");
 
 const DEFAULT_TIMEOUT_MS = 10_000;
+const DEFAULT_PUBLIC_HOST = process.env.SERVER_PUBLIC_HOST || "localhost";
+const DEFAULT_PORT_FALLBACKS = [
+  process.env.SERVER_PUBLIC_PORT,
+  process.env.PORT,
+  3000,
+];
+
+function pickPort(value) {
+  if (typeof value === "number" && Number.isInteger(value)) {
+    if (value > 0 && value <= 65_535) {
+      return value;
+    }
+    return undefined;
+  }
+
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isInteger(parsed) && parsed > 0 && parsed <= 65_535) {
+      return parsed;
+    }
+  }
+
+  return undefined;
+}
+
+function sanitizeHost(candidate, fallback = DEFAULT_PUBLIC_HOST) {
+  if (typeof candidate !== "string") {
+    return fallback;
+  }
+
+  const normalized = candidate.trim();
+  if (!normalized || normalized.includes("::") || normalized === "0.0.0.0") {
+    return fallback;
+  }
+
+  return normalized;
+}
+
+function parseAddressInfo(addressInfo) {
+  if (!addressInfo) {
+    return { host: undefined, port: undefined };
+  }
+
+  if (typeof addressInfo === "string") {
+    try {
+      const url = new URL(addressInfo);
+      return {
+        host: url.hostname,
+        port: pickPort(url.port),
+      };
+    } catch (_error) {
+      return { host: undefined, port: undefined };
+    }
+  }
+
+  if (typeof addressInfo === "object") {
+    return {
+      host: addressInfo.address,
+      port: pickPort(addressInfo.port),
+    };
+  }
+
+  return { host: undefined, port: undefined };
+}
+
+function resolveServerAddress({
+  fastify,
+  defaultHost = DEFAULT_PUBLIC_HOST,
+  defaultPortCandidates = DEFAULT_PORT_FALLBACKS,
+} = {}) {
+  const addressInfo =
+    typeof fastify?.server?.address === "function"
+      ? fastify.server.address()
+      : null;
+
+  const parsed = parseAddressInfo(addressInfo);
+  const host = sanitizeHost(parsed.host, defaultHost);
+
+  const port =
+    [parsed.port, ...defaultPortCandidates]
+      .map((value) => pickPort(value))
+      .find((value) => value !== undefined) ?? 3000;
+
+  return { host, port };
+}
+
+function resolveServerJoinPayload({
+  fastify,
+  serverIdentity = fastify?.serverIdentity,
+  preferDecorated = true,
+  defaultHost = DEFAULT_PUBLIC_HOST,
+  defaultPortCandidates = DEFAULT_PORT_FALLBACKS,
+} = {}) {
+  if (preferDecorated && fastify && typeof fastify === "object") {
+    const decorated = fastify.serverJoinPayload;
+    const decoratedPort = pickPort(decorated?.port);
+    if (
+      decorated &&
+      typeof decorated === "object" &&
+      typeof decorated.host === "string" &&
+      decorated.host.trim() &&
+      decoratedPort &&
+      typeof decorated.pubkey === "string" &&
+      decorated.pubkey.trim()
+    ) {
+      return {
+        host: decorated.host,
+        port: decoratedPort,
+        pubkey: decorated.pubkey,
+      };
+    }
+  }
+
+  const pubkey = serverIdentity?.publicKeyBase64Url;
+  if (typeof pubkey !== "string" || !pubkey.trim()) {
+    return null;
+  }
+
+  const { host, port } = resolveServerAddress({
+    fastify,
+    defaultHost,
+    defaultPortCandidates,
+  });
+
+  if (!host || !port) {
+    return null;
+  }
+
+  return { host, port, pubkey };
+}
+
 function makeServerIdentifier(host, port) {
   return `${host}:${port}`;
 }
@@ -48,6 +182,68 @@ function attachLifecycleHooks(socket, identifier, connectionRegistry, logger) {
   });
 }
 
+function attachServerMessageDispatcher(socket, {
+  fastify,
+  connectionRegistry,
+  logger,
+}) {
+  if (!socket || typeof socket.on !== "function") {
+    return;
+  }
+
+  if (socket.__serverMessageDispatcherAttached) {
+    return;
+  }
+
+  socket.__serverMessageDispatcherAttached = true;
+
+  socket.on("message", async (rawMessage) => {
+    const parsed = parseMessage(rawMessage);
+    if (parsed.error) {
+      logger?.warn?.(
+        { error: parsed.error },
+        "Received invalid message from server",
+      );
+      return;
+    }
+
+    let handlersModule;
+    try {
+      handlersModule = require("../handlers");
+    } catch (error) {
+      logger?.error?.(error, "Failed to load handlers module");
+      return;
+    }
+
+    const handler =
+      typeof handlersModule?.getHandler === "function"
+        ? handlersModule.getHandler(parsed.type)
+        : undefined;
+    if (!handler) {
+      logger?.warn?.(
+        { type: parsed.type },
+        "Received unsupported server message type",
+      );
+      return;
+    }
+
+    try {
+      await handler({
+        socket,
+        data: parsed,
+        meta: parsed.meta,
+        fastify,
+        connectionRegistry,
+      });
+    } catch (error) {
+      logger?.error?.(
+        error,
+        `Server message handler failed for type ${parsed.type}`,
+      );
+    }
+  });
+}
+
 function connectToServer({
   bootstrap,
   joinPayload,
@@ -56,6 +252,7 @@ function connectToServer({
   from,
   timeout = DEFAULT_TIMEOUT_MS,
   serverIdentity,
+  fastify,
 }) {
   return new Promise((resolve) => {
     const identifier = makeServerIdentifier(bootstrap.host, bootstrap.port);
@@ -70,6 +267,11 @@ function connectToServer({
 
     const existing = connectionRegistry.getServerConnection(identifier);
     if (existing && existing.readyState === WebSocket.OPEN) {
+      attachServerMessageDispatcher(existing, {
+        fastify,
+        connectionRegistry,
+        logger,
+      });
       try {
         existing.send(JSON.stringify(message));
         return resolve({ identifier, reused: true });
@@ -108,6 +310,11 @@ function connectToServer({
       try {
         connectionRegistry.registerServerConnection(identifier, ws);
         attachLifecycleHooks(ws, identifier, connectionRegistry, logger);
+        attachServerMessageDispatcher(ws, {
+          fastify,
+          connectionRegistry,
+          logger,
+        });
         const _message = JSON.stringify(message);
         logger.info?.(
           "Receiving message from another server: %s",
@@ -143,6 +350,7 @@ async function connectToIntroducers({
   from,
   timeout,
   serverIdentity,
+  fastify,
 }) {
   if (!Array.isArray(bootstrapServers) || bootstrapServers.length === 0) {
     return { successes: [], failures: [] };
@@ -179,6 +387,7 @@ async function connectToIntroducers({
       from,
       timeout,
       serverIdentity,
+      fastify,
     });
   });
 
@@ -196,4 +405,6 @@ module.exports = {
   connectToIntroducers,
   makeServerIdentifier,
   hostsMatch,
+  resolveServerAddress,
+  resolveServerJoinPayload,
 };
