@@ -29,7 +29,6 @@ function buildServerHelloJoinMessage({ from, to, payload }) {
       port,
       pubkey,
     },
-    sig: "",
   };
 }
 

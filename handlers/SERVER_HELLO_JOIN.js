@@ -1,11 +1,14 @@
 "use strict";
 
 const defaultRegistry = require("../utilities/connection-registry");
-const { send, sendError } = require("../utilities/message-utils");
+const { sendError, sendServerMessage } = require("../utilities/message-utils");
 const { connectToIntroducers } = require("../utilities/server-join");
+const { PrismaClient } = require("../generated/prisma");
+const { subMinutes } = require("date-fns");
 
 const FALLBACK_SERVER_ID = process.env.SERVER_ID || "G29_SERVER";
 let lastConnectionReport = null;
+const prisma = new PrismaClient();
 
 function normalizePort(value) {
   if (typeof value === "number") {
@@ -29,7 +32,9 @@ function validatePayload(payload) {
 
   const host = typeof payload.host === "string" ? payload.host.trim() : "";
   if (!host) {
-    throw new Error("SERVER_HELLO_JOIN payload.host must be a non-empty string");
+    throw new Error(
+      "SERVER_HELLO_JOIN payload.host must be a non-empty string",
+    );
   }
 
   const port = normalizePort(payload.port);
@@ -42,19 +47,16 @@ function validatePayload(payload) {
   const pubkey =
     typeof payload.pubkey === "string" ? payload.pubkey.trim() : undefined;
   if (!pubkey) {
-    throw new Error("SERVER_HELLO_JOIN payload.pubkey must be a non-empty string");
+    throw new Error(
+      "SERVER_HELLO_JOIN payload.pubkey must be a non-empty string",
+    );
   }
 
   return { host, port, pubkey };
 }
 
 module.exports = async function SERVER_HELLO_JOIN(props) {
-  const {
-    socket,
-    data,
-    fastify,
-    connectionRegistry = defaultRegistry,
-  } = props;
+  const { socket, data, fastify, connectionRegistry = defaultRegistry } = props;
 
   if (!fastify) {
     throw new Error("SERVER_HELLO_JOIN handler requires fastify instance");
@@ -80,12 +82,18 @@ module.exports = async function SERVER_HELLO_JOIN(props) {
       joinPayload,
       connectionRegistry,
       logger: fastify.log,
+      serverIdentity: fastify.serverIdentity,
       from:
-        data?.from || fastify.serverIdentity?.keyId || process.env.SERVER_ID || FALLBACK_SERVER_ID,
+        data?.from ||
+        fastify.serverIdentity?.keyId ||
+        process.env.SERVER_ID ||
+        FALLBACK_SERVER_ID,
     });
 
     const localServerId =
-      fastify.serverIdentity?.keyId || process.env.SERVER_ID || FALLBACK_SERVER_ID;
+      fastify.serverIdentity?.keyId ||
+      process.env.SERVER_ID ||
+      FALLBACK_SERVER_ID;
 
     const connectedServers = result.successes.map((entry) => entry.identifier);
     const failedServers = result.failures.map((entry) => ({
@@ -121,22 +129,49 @@ module.exports = async function SERVER_HELLO_JOIN(props) {
       );
     }
 
-    send(socket, {
-      type: "SERVER_WELCOME",
-      from: localServerId,
-      to: data?.from || localServerId,
-      payload: {
-        assignment: {
-          id:
-            data?.payload?.requestedId ||
-            data?.from ||
-            `${joinPayload.host}:${joinPayload.port}`,
+    let activeUsers = [];
+    try {
+      activeUsers = await prisma.client.findMany({
+        where: {
+          isActive: true,
+          ts: {
+            gte: subMinutes(new Date().getTime(), 10),
+          },
         },
-        servers: {
-          attempted: bootstrapServers.length,
-          connected: connectedServers,
-          failed: failedServers,
-          skipped: skippedServers,
+        select: { userID: true, pubkey: true },
+        orderBy: { ts: "desc" },
+      });
+    } catch (error) {
+      fastify.log.error(
+        error,
+        "Failed to load active users for SERVER_WELCOME",
+      );
+    }
+
+    const { host: serverHost, port: serverPort } =
+      resolveServerAddress(fastify);
+    const clients = activeUsers.map((user) => ({
+      user_id: user.userID,
+      host: serverHost,
+      port: serverPort,
+      pubkey: user.pubkey,
+    }));
+
+    const assignedId =
+      data?.payload?.requestedId ||
+      data?.from ||
+      `${joinPayload.host}:${joinPayload.port}`;
+
+    sendServerMessage({
+      socket,
+      serverIdentity: fastify.serverIdentity,
+      message: {
+        type: "SERVER_WELCOME",
+        from: localServerId,
+        to: data?.from || localServerId,
+        payload: {
+          assigned_id: assignedId,
+          clients,
         },
       },
     });
@@ -145,3 +180,64 @@ module.exports = async function SERVER_HELLO_JOIN(props) {
     sendError(socket, "INTERNAL_ERROR", error.message);
   }
 };
+function resolveServerAddress(fastify) {
+  const addressInfo =
+    typeof fastify?.server?.address === "function"
+      ? fastify.server.address()
+      : null;
+
+  const defaultHost = process.env.SERVER_PUBLIC_HOST || "localhost";
+  const defaultPortCandidates = [
+    Number.parseInt(process.env.SERVER_PUBLIC_PORT || "", 10),
+    Number.parseInt(process.env.PORT || "", 10),
+    3000,
+  ];
+
+  const pickPort = (value) => {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isInteger(parsed) && parsed > 0 && parsed <= 65535
+      ? parsed
+      : undefined;
+  };
+
+  let host = defaultHost;
+  let port =
+    defaultPortCandidates.find((candidate) => pickPort(candidate)) || 3000;
+  port = pickPort(port) || 3000;
+
+  if (typeof addressInfo === "string") {
+    try {
+      const url = new URL(addressInfo);
+      const candidateHost = url.hostname;
+      const candidatePort = pickPort(url.port);
+      if (
+        candidateHost &&
+        !candidateHost.includes("::") &&
+        candidateHost !== "0.0.0.0"
+      ) {
+        host = candidateHost;
+      }
+      if (candidatePort) {
+        port = candidatePort;
+      }
+    } catch (_error) {
+      // Ignore malformed address strings and fall back to defaults.
+    }
+  } else if (addressInfo && typeof addressInfo === "object") {
+    const candidateHost = addressInfo.address;
+    const candidatePort = pickPort(addressInfo.port);
+    if (
+      typeof candidateHost === "string" &&
+      candidateHost &&
+      !candidateHost.includes("::") &&
+      candidateHost !== "0.0.0.0"
+    ) {
+      host = candidateHost;
+    }
+    if (candidatePort) {
+      port = candidatePort;
+    }
+  }
+
+  return { host, port };
+}

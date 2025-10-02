@@ -5,6 +5,7 @@ const WebSocket = require("ws");
 const {
   buildServerHelloJoinMessage,
 } = require("../server-messages/SERVER_HELLO_JOIN");
+const { prepareServerMessageEnvelope } = require("./message-utils");
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 function makeServerIdentifier(host, port) {
@@ -54,13 +55,17 @@ function connectToServer({
   logger,
   from,
   timeout = DEFAULT_TIMEOUT_MS,
+  serverIdentity,
 }) {
   return new Promise((resolve) => {
     const identifier = makeServerIdentifier(bootstrap.host, bootstrap.port);
-    const message = buildServerHelloJoinMessage({
-      from,
-      to: identifier,
-      payload: joinPayload,
+    const message = prepareServerMessageEnvelope({
+      message: buildServerHelloJoinMessage({
+        from,
+        to: identifier,
+        payload: joinPayload,
+      }),
+      serverIdentity,
     });
 
     const existing = connectionRegistry.getServerConnection(identifier);
@@ -137,6 +142,7 @@ async function connectToIntroducers({
   logger,
   from,
   timeout,
+  serverIdentity,
 }) {
   if (!Array.isArray(bootstrapServers) || bootstrapServers.length === 0) {
     return { successes: [], failures: [] };
@@ -172,6 +178,7 @@ async function connectToIntroducers({
       logger,
       from,
       timeout,
+      serverIdentity,
     });
   });
 
