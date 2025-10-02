@@ -3,6 +3,8 @@
 const userSockets = new Map();
 const serverSockets = new Map();
 const serverOrigins = new Map();
+const externalUsers = new Map();
+const serverExternalUserIndex = new Map();
 let socketToUser = new WeakMap();
 let socketToServer = new WeakMap();
 
@@ -117,7 +119,11 @@ function unregisterServer(serverId) {
     socketToServer.delete(socket);
   }
 
-  return serverSockets.delete(serverId);
+  const removed = serverSockets.delete(serverId);
+  if (removed) {
+    removeExternalUsersByServer(serverId);
+  }
+  return removed;
 }
 
 function unregisterServerSocket(socket) {
@@ -130,7 +136,11 @@ function unregisterServerSocket(socket) {
     serverSockets.delete(serverId);
   }
 
-  return socketToServer.delete(socket);
+  const removed = socketToServer.delete(socket);
+  if (removed) {
+    removeExternalUsersByServer(serverId);
+  }
+  return removed;
 }
 
 function listActiveServers() {
@@ -179,10 +189,102 @@ function listServerOrigins() {
   }));
 }
 
+function upsertExternalUsers(serverId, clients, { timestamp } = {}) {
+  const normalizedServerId =
+    typeof serverId === "string" && serverId.trim() ? serverId.trim() : null;
+
+  if (!Array.isArray(clients) || clients.length === 0) {
+    if (normalizedServerId) {
+      removeExternalUsersByServer(normalizedServerId);
+    }
+    return listExternalUsers();
+  }
+
+  const lastSeen =
+    typeof timestamp === "number" && Number.isFinite(timestamp)
+      ? timestamp
+      : Date.now();
+
+  if (normalizedServerId) {
+    const existing = serverExternalUserIndex.get(normalizedServerId) || [];
+    for (const userId of existing) {
+      if (!clients.some((client) => client?.user_id === userId)) {
+        externalUsers.delete(userId);
+      }
+    }
+    serverExternalUserIndex.set(normalizedServerId, []);
+  }
+
+  for (const client of clients) {
+    if (!client || typeof client !== "object") {
+      continue;
+    }
+
+    const userId =
+      typeof client.user_id === "string" ? client.user_id.trim() : "";
+    if (!userId) {
+      continue;
+    }
+
+    const record = {
+      userID: userId,
+      version: "external",
+      ts: lastSeen,
+      pubkey:
+        typeof client.pubkey === "string" && client.pubkey.trim()
+          ? client.pubkey.trim()
+          : null,
+      host:
+        typeof client.host === "string" && client.host.trim()
+          ? client.host.trim()
+          : null,
+      port:
+        typeof client.port === "number"
+          ? client.port
+          : Number.parseInt(client.port, 10) || null,
+      sourceServer: normalizedServerId,
+    };
+
+    externalUsers.set(userId, record);
+
+    if (normalizedServerId) {
+      const index = serverExternalUserIndex.get(normalizedServerId) || [];
+      index.push(userId);
+      serverExternalUserIndex.set(normalizedServerId, index);
+    }
+  }
+
+  return listExternalUsers();
+}
+
+function removeExternalUsersByServer(serverId) {
+  if (typeof serverId !== "string" || !serverId.trim()) {
+    return false;
+  }
+
+  const normalized = serverId.trim();
+  const users = serverExternalUserIndex.get(normalized);
+  if (!users) {
+    return false;
+  }
+
+  for (const userId of users) {
+    externalUsers.delete(userId);
+  }
+
+  return serverExternalUserIndex.delete(normalized);
+}
+
+function listExternalUsers() {
+  return Array.from(externalUsers.values());
+}
+
 function clearAll() {
   userSockets.clear();
   serverSockets.clear();
   serverOrigins.clear();
+  externalUsers.clear();
+  serverExternalUserIndex.clear();
   socketToUser = new WeakMap();
   socketToServer = new WeakMap();
 }
@@ -204,5 +306,8 @@ module.exports = {
   registerServerOrigin,
   unregisterServerOrigin,
   listServerOrigins,
+  upsertExternalUsers,
+  removeExternalUsersByServer,
+  listExternalUsers,
   clearAll,
 };

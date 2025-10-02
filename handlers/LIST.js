@@ -3,12 +3,13 @@
 const { send, sendError } = require("../utilities/message-utils");
 const { PrismaClient } = require("../generated/prisma");
 const { verifyStoredUserSignature } = require("../utilities/signature-utils");
+const defaultRegistry = require("../utilities/connection-registry");
 const { subMinutes } = require("date-fns");
 
 const prisma = new PrismaClient();
 
 module.exports = async function LIST(props) {
-  const { socket, data, meta } = props;
+  const { socket, data, meta, connectionRegistry = defaultRegistry } = props;
   console.log("[LIST] Request from:", data.from);
 
   try {
@@ -32,6 +33,40 @@ module.exports = async function LIST(props) {
 
     console.log(`Found ${activeUsers.length} ACTIVE users`);
 
+    let externalUsers = [];
+    try {
+      if (typeof connectionRegistry.listExternalUsers === "function") {
+        externalUsers = connectionRegistry.listExternalUsers();
+      }
+    } catch (error) {
+      console.warn("Failed to list external users", error);
+    }
+
+    const seenUserIds = new Set(activeUsers.map((user) => user.userID));
+    const normalizedExternalUsers = externalUsers
+      .filter((user) => user && typeof user.userID === "string")
+      .filter((user) => {
+        if (seenUserIds.has(user.userID)) {
+          return false;
+        }
+        seenUserIds.add(user.userID);
+        return true;
+      })
+      .map((user) => ({
+        userID: user.userID,
+        version: user.version || "external",
+        ts:
+          typeof user.ts === "number"
+            ? new Date(user.ts)
+            : user.ts || new Date(),
+        pubkey: user.pubkey || null,
+        host: user.host || null,
+        port: user.port || null,
+        sourceServer: user.sourceServer || null,
+      }));
+
+    const combinedUsers = [...activeUsers, ...normalizedExternalUsers];
+
     const { valid, user } = await verifyStoredUserSignature({
       prismaClient: prisma,
       userId: data.from,
@@ -52,9 +87,9 @@ module.exports = async function LIST(props) {
       from: "server",
       to: data.from,
       payload: {
-        users: activeUsers,
-        total: activeUsers.length,
-        message: `Found ${activeUsers.length} active users online`,
+        users: combinedUsers,
+        total: combinedUsers.length,
+        message: `Found ${combinedUsers.length} active users online`,
       },
     });
   } catch (error) {
