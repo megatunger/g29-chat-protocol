@@ -3,6 +3,7 @@
 const { send, sendError } = require("../utilities/message-utils");
 const { PrismaClient } = require("../generated/prisma");
 const { verifyStoredUserSignature } = require("../utilities/signature-utils");
+const { subMinutes } = require("date-fns");
 
 const prisma = new PrismaClient();
 
@@ -14,6 +15,9 @@ module.exports = async function LIST(props) {
     const activeUsers = await prisma.client.findMany({
       where: {
         isActive: true,
+        ts: {
+          gte: subMinutes(new Date().getTime(), 10),
+        },
       },
       select: {
         userID: true,
