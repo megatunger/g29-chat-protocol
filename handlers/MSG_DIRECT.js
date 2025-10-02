@@ -8,8 +8,13 @@ const {
 const { PrismaClient } = require("../generated/prisma");
 const { verifyStoredUserSignature } = require("../utilities/signature-utils");
 const defaultRegistry = require("../utilities/connection-registry");
+const {
+  getLocalRoutingMetadata,
+  isSameServer,
+} = require("../utilities/server-routing");
 
 const prisma = new PrismaClient();
+const FALLBACK_SERVER_ID = process.env.SERVER_ID || "G29_SERVER";
 
 module.exports = async function MSG_DIRECT(props) {
   const { socket, data, fastify, connectionRegistry = defaultRegistry } = props;
@@ -87,6 +92,8 @@ module.exports = async function MSG_DIRECT(props) {
 
     let deliveryStatus = "recipient_unavailable";
     let deliveryError = null;
+    let forwardedServers = [];
+    let failedForwardServers = [];
 
     const isRecipientOpen =
       recipientSocket &&
@@ -117,6 +124,105 @@ module.exports = async function MSG_DIRECT(props) {
       }
     }
 
+    const { joinPayload: localJoinPayload, identifier: localAddressId } =
+      getLocalRoutingMetadata(fastify);
+
+    if (deliveryStatus === "recipient_unavailable") {
+      try {
+        const serverIds =
+          typeof connectionRegistry.listActiveServers === "function"
+            ? connectionRegistry.listActiveServers()
+            : [];
+
+        const localServerId =
+          fastify?.serverIdentity?.keyId || FALLBACK_SERVER_ID;
+
+        if (Array.isArray(serverIds) && serverIds.length > 0) {
+          const attemptedServers = new Set();
+          for (const serverId of serverIds) {
+            if (!serverId || serverId === localServerId) {
+              continue;
+            }
+
+            if (attemptedServers.has(serverId)) {
+              continue;
+            }
+
+            const serverSocket =
+              typeof connectionRegistry.getServerConnection === "function"
+                ? connectionRegistry.getServerConnection(serverId)
+                : null;
+
+            if (
+              isSameServer({
+                serverId,
+                localServerId,
+                localJoinPayload,
+                localIdentifier: localAddressId,
+                socket: serverSocket,
+              })
+            ) {
+              continue;
+            }
+
+            const isServerOpen =
+              serverSocket &&
+              (typeof serverSocket.readyState !== "number" ||
+                serverSocket.readyState === 1 ||
+                serverSocket.readyState === serverSocket.OPEN);
+
+            if (!isServerOpen) {
+              continue;
+            }
+
+            try {
+              sendServerMessage({
+                socket: serverSocket,
+                serverIdentity: fastify?.serverIdentity,
+                message: {
+                  type: "SERVER_DELIVER",
+                  from: localServerId,
+                  to: serverId,
+                  payload: {
+                    user_id: recipientId,
+                    sender: data.from,
+                    sender_pub: senderPub,
+                    ciphertext,
+                    content_sig: contentSig,
+                  },
+                },
+              });
+              attemptedServers.add(serverId);
+              forwardedServers.push(serverId);
+            } catch (forwardError) {
+              attemptedServers.add(serverId);
+              failedForwardServers.push({
+                server: serverId,
+                error: forwardError?.message || "Failed to forward",
+              });
+              if (fastify?.log) {
+                fastify.log.error(
+                  forwardError,
+                  `Failed to forward SERVER_DELIVER to ${serverId}`,
+                );
+              }
+            }
+          }
+        }
+
+        if (forwardedServers.length > 0) {
+          deliveryStatus = "forwarded_remote";
+        }
+      } catch (forwardError) {
+        if (fastify?.log) {
+          fastify.log.error(
+            forwardError,
+            "Failed while attempting remote SERVER_DELIVER forwarding",
+          );
+        }
+      }
+    }
+
     const ackPayload = {
       recipient: recipientId,
       recipientId,
@@ -125,14 +231,22 @@ module.exports = async function MSG_DIRECT(props) {
       updatedAt: new Date().toISOString(),
     };
 
-    if (deliveryStatus === "recipient_unavailable") {
+    if (forwardedServers.length > 0) {
+      ackPayload.forwardedServers = forwardedServers;
       ackPayload.note =
-        "Recipient not connected locally. TODO: forward to remote server.";
+        "Recipient not connected locally. Forwarded to remote servers.";
+    } else if (deliveryStatus === "recipient_unavailable") {
+      ackPayload.note =
+        "Recipient not connected locally and no remote servers available.";
     }
 
     if (deliveryStatus === "delivery_failed") {
       ackPayload.error =
         deliveryError?.message || "Failed to send direct message";
+    }
+
+    if (failedForwardServers.length > 0) {
+      ackPayload.failedServers = failedForwardServers;
     }
 
     send(socket, {
