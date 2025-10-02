@@ -8,6 +8,10 @@ const {
 const { PrismaClient } = require("../generated/prisma");
 const { verifyStoredUserSignature } = require("../utilities/signature-utils");
 const defaultRegistry = require("../utilities/connection-registry");
+const {
+  getLocalRoutingMetadata,
+  isSameServer,
+} = require("../utilities/server-routing");
 
 const prisma = new PrismaClient();
 const FALLBACK_SERVER_ID = process.env.SERVER_ID || "G29_SERVER";
@@ -120,6 +124,9 @@ module.exports = async function MSG_DIRECT(props) {
       }
     }
 
+    const { joinPayload: localJoinPayload, identifier: localAddressId } =
+      getLocalRoutingMetadata(fastify);
+
     if (deliveryStatus === "recipient_unavailable") {
       try {
         const serverIds =
@@ -131,8 +138,13 @@ module.exports = async function MSG_DIRECT(props) {
           fastify?.serverIdentity?.keyId || FALLBACK_SERVER_ID;
 
         if (Array.isArray(serverIds) && serverIds.length > 0) {
+          const attemptedServers = new Set();
           for (const serverId of serverIds) {
             if (!serverId || serverId === localServerId) {
+              continue;
+            }
+
+            if (attemptedServers.has(serverId)) {
               continue;
             }
 
@@ -140,6 +152,18 @@ module.exports = async function MSG_DIRECT(props) {
               typeof connectionRegistry.getServerConnection === "function"
                 ? connectionRegistry.getServerConnection(serverId)
                 : null;
+
+            if (
+              isSameServer({
+                serverId,
+                localServerId,
+                localJoinPayload,
+                localIdentifier: localAddressId,
+                socket: serverSocket,
+              })
+            ) {
+              continue;
+            }
 
             const isServerOpen =
               serverSocket &&
@@ -168,11 +192,13 @@ module.exports = async function MSG_DIRECT(props) {
                   },
                 },
               });
+              attemptedServers.add(serverId);
               forwardedServers.push(serverId);
             } catch (forwardError) {
+              attemptedServers.add(serverId);
               failedForwardServers.push({
                 server: serverId,
-                error: forwardError?.message || "Failed to forward", 
+                error: forwardError?.message || "Failed to forward",
               });
               if (fastify?.log) {
                 fastify.log.error(
