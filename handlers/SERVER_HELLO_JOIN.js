@@ -5,10 +5,40 @@ const { sendError, sendServerMessage } = require("../utilities/message-utils");
 const { connectToIntroducers } = require("../utilities/server-join");
 const { PrismaClient } = require("../generated/prisma");
 const { subMinutes } = require("date-fns");
+const { listServerOrigins } = require("../utilities/connection-registry");
 
 const FALLBACK_SERVER_ID = process.env.SERVER_ID || "G29_SERVER";
 let lastConnectionReport = null;
 const prisma = new PrismaClient();
+
+function extractOriginAddress(req) {
+  if (!req || typeof req !== "object") {
+    return null;
+  }
+
+  const forwarded = req.headers?.["x-forwarded-for"];
+  if (typeof forwarded === "string" && forwarded.trim()) {
+    return forwarded.split(",")[0].trim();
+  }
+
+  if (Array.isArray(forwarded) && forwarded.length > 0) {
+    const first = forwarded.find((value) => typeof value === "string");
+    if (first && first.trim()) {
+      return first.trim();
+    }
+  }
+
+  if (typeof req.ip === "string" && req.ip.trim()) {
+    return req.ip.trim();
+  }
+
+  const remoteAddress =
+    req.socket?.remoteAddress || req.connection?.remoteAddress || "";
+
+  return typeof remoteAddress === "string" && remoteAddress.trim()
+    ? remoteAddress.trim()
+    : null;
+}
 
 function normalizePort(value) {
   if (typeof value === "number") {
@@ -56,7 +86,13 @@ function validatePayload(payload) {
 }
 
 module.exports = async function SERVER_HELLO_JOIN(props) {
-  const { socket, data, fastify, connectionRegistry = defaultRegistry } = props;
+  const {
+    socket,
+    data,
+    fastify,
+    connectionRegistry = defaultRegistry,
+    req,
+  } = props;
 
   if (!fastify) {
     throw new Error("SERVER_HELLO_JOIN handler requires fastify instance");
@@ -69,6 +105,8 @@ module.exports = async function SERVER_HELLO_JOIN(props) {
     sendError(socket, "INVALID_PAYLOAD", error.message);
     return;
   }
+
+  const originAddress = extractOriginAddress(req);
 
   const bootstrapServers = fastify.bootstrapServers || [];
   if (!Array.isArray(bootstrapServers) || bootstrapServers.length === 0) {
@@ -115,19 +153,19 @@ module.exports = async function SERVER_HELLO_JOIN(props) {
       requester: data?.from || null,
     };
 
-    const serializedReport = JSON.stringify(connectionReport);
-    if (serializedReport !== lastConnectionReport) {
-      fastify.log.info(
-        connectionReport,
-        "SERVER_HELLO_JOIN connection results",
-      );
-      lastConnectionReport = serializedReport;
-    } else {
-      fastify.log.debug(
-        { requester: connectionReport.requester },
-        "SERVER_HELLO_JOIN connection results unchanged",
-      );
-    }
+    // const serializedReport = JSON.stringify(connectionReport);
+    // if (serializedReport !== lastConnectionReport) {
+    //   fastify.log.info(
+    //     connectionReport,
+    //     "SERVER_HELLO_JOIN connection results",
+    //   );
+    //   lastConnectionReport = serializedReport;
+    // } else {
+    //   fastify.log.debug(
+    //     { requester: connectionReport.requester },
+    //     "SERVER_HELLO_JOIN connection results unchanged",
+    //   );
+    // }
 
     let activeUsers = [];
     try {
@@ -161,6 +199,26 @@ module.exports = async function SERVER_HELLO_JOIN(props) {
       data?.payload?.requestedId ||
       data?.from ||
       `${joinPayload.host}:${joinPayload.port}`;
+
+    if (originAddress && connectionRegistry?.registerServerOrigin) {
+      const targetAddress = `${joinPayload.host}:${joinPayload.port}`;
+      try {
+        connectionRegistry.registerServerOrigin(
+          originAddress,
+          targetAddress,
+          socket,
+        );
+      } catch (error) {
+        fastify.log.warn(
+          {
+            originAddress,
+            targetAddress,
+            err: error,
+          },
+          "Failed to register server origin",
+        );
+      }
+    }
 
     sendServerMessage({
       socket,

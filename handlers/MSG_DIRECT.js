@@ -1,6 +1,10 @@
 "use strict";
 
-const { send, sendError } = require("../utilities/message-utils");
+const {
+  send,
+  sendError,
+  sendServerMessage,
+} = require("../utilities/message-utils");
 const { PrismaClient } = require("../generated/prisma");
 const { verifyStoredUserSignature } = require("../utilities/signature-utils");
 const defaultRegistry = require("../utilities/connection-registry");
@@ -31,7 +35,11 @@ module.exports = async function MSG_DIRECT(props) {
         : typeof payload.recipientId === "string"
           ? payload.recipientId
           : null;
-  const { ciphertext, content_sig: contentSig, sender_pub: senderPub } = payload;
+  const {
+    ciphertext,
+    content_sig: contentSig,
+    sender_pub: senderPub,
+  } = payload;
 
   if (!recipientId) {
     sendError(socket, "INVALID_RECIPIENT", "recipientId must be provided");

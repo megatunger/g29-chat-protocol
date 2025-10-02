@@ -2,6 +2,7 @@
 
 const userSockets = new Map();
 const serverSockets = new Map();
+const serverOrigins = new Map();
 let socketToUser = new WeakMap();
 let socketToServer = new WeakMap();
 
@@ -62,6 +63,10 @@ function unregisterSocket(socket) {
     }
     socketToServer.delete(socket);
     removed = true;
+  }
+
+  if (typeof socket?.__registeredServerOrigin === "string") {
+    serverOrigins.delete(socket.__registeredServerOrigin);
   }
 
   return removed;
@@ -132,9 +137,52 @@ function listActiveServers() {
   return Array.from(serverSockets.keys());
 }
 
+function registerServerOrigin(originAddress, targetAddress, socket) {
+  if (!originAddress || typeof originAddress !== "string") {
+    throw new Error("registerServerOrigin requires an originAddress string");
+  }
+
+  const normalizedOrigin = originAddress.trim();
+  if (!normalizedOrigin) {
+    throw new Error("registerServerOrigin originAddress must not be empty");
+  }
+
+  const normalizedTarget =
+    typeof targetAddress === "string" ? targetAddress.trim() : null;
+
+  const record = {
+    target: normalizedTarget,
+    lastSeen: Date.now(),
+  };
+
+  serverOrigins.set(normalizedOrigin, record);
+
+  if (socket && typeof socket === "object") {
+    socket.__registeredServerOrigin = normalizedOrigin;
+  }
+
+  return record;
+}
+
+function unregisterServerOrigin(originAddress) {
+  if (!originAddress || typeof originAddress !== "string") {
+    return false;
+  }
+
+  return serverOrigins.delete(originAddress.trim());
+}
+
+function listServerOrigins() {
+  return Array.from(serverOrigins.entries()).map(([origin, record]) => ({
+    origin,
+    ...record,
+  }));
+}
+
 function clearAll() {
   userSockets.clear();
   serverSockets.clear();
+  serverOrigins.clear();
   socketToUser = new WeakMap();
   socketToServer = new WeakMap();
 }
@@ -153,5 +201,8 @@ module.exports = {
   unregisterServer,
   unregisterServerSocket,
   listActiveServers,
+  registerServerOrigin,
+  unregisterServerOrigin,
+  listServerOrigins,
   clearAll,
 };
