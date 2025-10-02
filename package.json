@@ -11,11 +11,11 @@
     "generate:keypair": "node scripts/generate-keypair.js",
     "generate:key": "node scripts/generate-keypair.js key1",
     "test": "node --test test/**/*.test.js",
-    "start": "fastify start -l info app.js",
     "create:db": "prisma migrate reset",
     "dev:without-key": "fastify start -w -l info -P app.js",
-    "dev": "SERVER_ID=G29_SERVER1 SERVER_KEY_ID=key1 yarn dev:without-key",
-    "dev:server2": "SERVER_ID=G29_SERVER2 SERVER_KEY_ID=key1 yarn dev:without-key --port 3002",
+    "dev": "cross-env SERVER_ID=G29_SERVER1 SERVER_KEY_ID=key1 fastify start -w -l info -P app.js",
+    "dev:server2": "cross-env SERVER_ID=G29_SERVER2 SERVER_KEY_ID=key1 fastify start -w -l info -P app.js --port 3002",
+    "start": "cross-env SERVER_ID=G29_SERVER1 SERVER_KEY_ID=key1 fastify start -l info app.js",
     "studio": "npx prisma studio"
   },
   "keywords": [],
@@ -26,7 +26,7 @@
     "@fastify/cors": "^11.1.0",
     "@fastify/sensible": "^6.0.0",
     "@fastify/websocket": "^11.2.0",
-    "@prisma/client": "^6.16.2",
+    "@prisma/client": "^6.16.3",
     "base64url-universal": "^2.0.0",
     "bcrypt": "^6.0.0",
     "date-fns": "^4.1.0",
@@ -40,7 +40,8 @@
     "yaml": "^2.8.1"
   },
   "devDependencies": {
+    "cross-env": "^10.1.0",
     "prettier": "^3.6.2",
-    "prisma": "^6.16.2"
+    "prisma": "^6.16.3"
   }
 }
