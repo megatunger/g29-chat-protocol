@@ -19,6 +19,8 @@ import useProtocolRequest from "@/services/useProtocolRequest";
 import { useNewKey } from "@/contexts/NewKeyContext";
 import useChatTransforms from "@/hooks/use-chat-transforms";
 import { publicChannelKeyManager } from "@/lib/group-keys";
+import UserListContainer from "@/components/ui/UserListContainer";
+import UserList from "@/components/ui/UserList";
 
 type ChatDirection = "incoming" | "outgoing";
 
@@ -79,26 +81,12 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
         if (trimmed.startsWith("/list")) {
           appendMessage("outgoing", trimmed, new Date().getTime());
           const usersResponse = await sendListAllUsers({});
+          // render interactive UserList component inside the incoming message
           appendMessage(
             "incoming",
-            <div className="d-flex flex-row items-start">
-              {usersResponse?.payload?.message}
-              <br />
-              <div className="mt-2 flex-col">
-                {usersResponse?.payload?.users?.map((user) => (
-                  <div
-                    key={user?.userID}
-                    className="mt-2 flex-row flex items-center"
-                  >
-                    <Badge className="mr-2">{user?.userID}</Badge>
-                    <div className="text-gray-500 text-xs">
-                      {formatDistance(new Date(user?.ts), new Date(), {
-                        addSuffix: true,
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
+            <div>
+              <div className="mb-2">{usersResponse?.payload?.message}</div>
+              <UserList users={usersResponse?.payload?.users || []} />
             </div>,
             usersResponse?.ts,
           );
@@ -549,7 +537,11 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
     [messages, sendMessageWithHistory],
   );
 
-  return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
+  return (
+    <ChatContext.Provider value={value}>
+      {children}
+    </ChatContext.Provider>
+  );
 };
 
 const useChat = () => {
