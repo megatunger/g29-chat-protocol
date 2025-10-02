@@ -5,6 +5,7 @@ const { sendError, sendServerMessage } = require("../utilities/message-utils");
 const { connectToIntroducers } = require("../utilities/server-join");
 const { PrismaClient } = require("../generated/prisma");
 const { subMinutes } = require("date-fns");
+const { listServerOrigins } = require("../utilities/connection-registry");
 
 const FALLBACK_SERVER_ID = process.env.SERVER_ID || "G29_SERVER";
 let lastConnectionReport = null;
@@ -85,8 +86,13 @@ function validatePayload(payload) {
 }
 
 module.exports = async function SERVER_HELLO_JOIN(props) {
-  const { socket, data, fastify, connectionRegistry = defaultRegistry, req } =
-    props;
+  const {
+    socket,
+    data,
+    fastify,
+    connectionRegistry = defaultRegistry,
+    req,
+  } = props;
 
   if (!fastify) {
     throw new Error("SERVER_HELLO_JOIN handler requires fastify instance");
@@ -147,19 +153,19 @@ module.exports = async function SERVER_HELLO_JOIN(props) {
       requester: data?.from || null,
     };
 
-    const serializedReport = JSON.stringify(connectionReport);
-    if (serializedReport !== lastConnectionReport) {
-      fastify.log.info(
-        connectionReport,
-        "SERVER_HELLO_JOIN connection results",
-      );
-      lastConnectionReport = serializedReport;
-    } else {
-      fastify.log.debug(
-        { requester: connectionReport.requester },
-        "SERVER_HELLO_JOIN connection results unchanged",
-      );
-    }
+    // const serializedReport = JSON.stringify(connectionReport);
+    // if (serializedReport !== lastConnectionReport) {
+    //   fastify.log.info(
+    //     connectionReport,
+    //     "SERVER_HELLO_JOIN connection results",
+    //   );
+    //   lastConnectionReport = serializedReport;
+    // } else {
+    //   fastify.log.debug(
+    //     { requester: connectionReport.requester },
+    //     "SERVER_HELLO_JOIN connection results unchanged",
+    //   );
+    // }
 
     let activeUsers = [];
     try {
