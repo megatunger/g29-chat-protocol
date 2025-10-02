@@ -10,6 +10,7 @@ const MSG_PUBLIC_CHANNEL = require("./MSG_PUBLIC_CHANNEL");
 const PUBLIC_CHANNEL_KEY_SHARE = require("./PUBLIC_CHANNEL_KEY_SHARE");
 const SERVER_HELLO_JOIN = require("./SERVER_HELLO_JOIN");
 const SERVER_WELCOME = require("./SERVER_WELCOME");
+const SERVER_DELIVER = require("./SERVER_DELIVER");
 
 const handlers = new Map([
   ["ping", ping],
@@ -22,6 +23,7 @@ const handlers = new Map([
   ["PUBLIC_CHANNEL_KEY_SHARE", PUBLIC_CHANNEL_KEY_SHARE],
   ["SERVER_HELLO_JOIN", SERVER_HELLO_JOIN],
   ["SERVER_WELCOME", SERVER_WELCOME],
+  ["SERVER_DELIVER", SERVER_DELIVER],
 ]);
 
 function getHandler(type) {
