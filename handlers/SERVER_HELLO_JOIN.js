@@ -126,6 +126,7 @@ module.exports = async function SERVER_HELLO_JOIN(props) {
         fastify.serverIdentity?.keyId ||
         process.env.SERVER_ID ||
         FALLBACK_SERVER_ID,
+      fastify,
     });
 
     const localServerId =

@@ -5,7 +5,10 @@ const WebSocket = require("ws");
 const {
   buildServerHelloJoinMessage,
 } = require("../server-messages/SERVER_HELLO_JOIN");
-const { prepareServerMessageEnvelope } = require("./message-utils");
+const {
+  prepareServerMessageEnvelope,
+  parseMessage,
+} = require("./message-utils");
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 function makeServerIdentifier(host, port) {
@@ -48,6 +51,68 @@ function attachLifecycleHooks(socket, identifier, connectionRegistry, logger) {
   });
 }
 
+function attachServerMessageDispatcher(socket, {
+  fastify,
+  connectionRegistry,
+  logger,
+}) {
+  if (!socket || typeof socket.on !== "function") {
+    return;
+  }
+
+  if (socket.__serverMessageDispatcherAttached) {
+    return;
+  }
+
+  socket.__serverMessageDispatcherAttached = true;
+
+  socket.on("message", async (rawMessage) => {
+    const parsed = parseMessage(rawMessage);
+    if (parsed.error) {
+      logger?.warn?.(
+        { error: parsed.error },
+        "Received invalid message from server",
+      );
+      return;
+    }
+
+    let handlersModule;
+    try {
+      handlersModule = require("../handlers");
+    } catch (error) {
+      logger?.error?.(error, "Failed to load handlers module");
+      return;
+    }
+
+    const handler =
+      typeof handlersModule?.getHandler === "function"
+        ? handlersModule.getHandler(parsed.type)
+        : undefined;
+    if (!handler) {
+      logger?.warn?.(
+        { type: parsed.type },
+        "Received unsupported server message type",
+      );
+      return;
+    }
+
+    try {
+      await handler({
+        socket,
+        data: parsed,
+        meta: parsed.meta,
+        fastify,
+        connectionRegistry,
+      });
+    } catch (error) {
+      logger?.error?.(
+        error,
+        `Server message handler failed for type ${parsed.type}`,
+      );
+    }
+  });
+}
+
 function connectToServer({
   bootstrap,
   joinPayload,
@@ -56,6 +121,7 @@ function connectToServer({
   from,
   timeout = DEFAULT_TIMEOUT_MS,
   serverIdentity,
+  fastify,
 }) {
   return new Promise((resolve) => {
     const identifier = makeServerIdentifier(bootstrap.host, bootstrap.port);
@@ -70,6 +136,11 @@ function connectToServer({
 
     const existing = connectionRegistry.getServerConnection(identifier);
     if (existing && existing.readyState === WebSocket.OPEN) {
+      attachServerMessageDispatcher(existing, {
+        fastify,
+        connectionRegistry,
+        logger,
+      });
       try {
         existing.send(JSON.stringify(message));
         return resolve({ identifier, reused: true });
@@ -108,6 +179,11 @@ function connectToServer({
       try {
         connectionRegistry.registerServerConnection(identifier, ws);
         attachLifecycleHooks(ws, identifier, connectionRegistry, logger);
+        attachServerMessageDispatcher(ws, {
+          fastify,
+          connectionRegistry,
+          logger,
+        });
         const _message = JSON.stringify(message);
         logger.info?.(
           "Receiving message from another server: %s",
@@ -143,6 +219,7 @@ async function connectToIntroducers({
   from,
   timeout,
   serverIdentity,
+  fastify,
 }) {
   if (!Array.isArray(bootstrapServers) || bootstrapServers.length === 0) {
     return { successes: [], failures: [] };
@@ -179,6 +256,7 @@ async function connectToIntroducers({
       from,
       timeout,
       serverIdentity,
+      fastify,
     });
   });
 
