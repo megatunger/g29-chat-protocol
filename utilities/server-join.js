@@ -11,6 +11,137 @@ const {
 } = require("./message-utils");
 
 const DEFAULT_TIMEOUT_MS = 10_000;
+const DEFAULT_PUBLIC_HOST = process.env.SERVER_PUBLIC_HOST || "localhost";
+const DEFAULT_PORT_FALLBACKS = [
+  process.env.SERVER_PUBLIC_PORT,
+  process.env.PORT,
+  3000,
+];
+
+function pickPort(value) {
+  if (typeof value === "number" && Number.isInteger(value)) {
+    if (value > 0 && value <= 65_535) {
+      return value;
+    }
+    return undefined;
+  }
+
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isInteger(parsed) && parsed > 0 && parsed <= 65_535) {
+      return parsed;
+    }
+  }
+
+  return undefined;
+}
+
+function sanitizeHost(candidate, fallback = DEFAULT_PUBLIC_HOST) {
+  if (typeof candidate !== "string") {
+    return fallback;
+  }
+
+  const normalized = candidate.trim();
+  if (!normalized || normalized.includes("::") || normalized === "0.0.0.0") {
+    return fallback;
+  }
+
+  return normalized;
+}
+
+function parseAddressInfo(addressInfo) {
+  if (!addressInfo) {
+    return { host: undefined, port: undefined };
+  }
+
+  if (typeof addressInfo === "string") {
+    try {
+      const url = new URL(addressInfo);
+      return {
+        host: url.hostname,
+        port: pickPort(url.port),
+      };
+    } catch (_error) {
+      return { host: undefined, port: undefined };
+    }
+  }
+
+  if (typeof addressInfo === "object") {
+    return {
+      host: addressInfo.address,
+      port: pickPort(addressInfo.port),
+    };
+  }
+
+  return { host: undefined, port: undefined };
+}
+
+function resolveServerAddress({
+  fastify,
+  defaultHost = DEFAULT_PUBLIC_HOST,
+  defaultPortCandidates = DEFAULT_PORT_FALLBACKS,
+} = {}) {
+  const addressInfo =
+    typeof fastify?.server?.address === "function"
+      ? fastify.server.address()
+      : null;
+
+  const parsed = parseAddressInfo(addressInfo);
+  const host = sanitizeHost(parsed.host, defaultHost);
+
+  const port =
+    [parsed.port, ...defaultPortCandidates]
+      .map((value) => pickPort(value))
+      .find((value) => value !== undefined) ?? 3000;
+
+  return { host, port };
+}
+
+function resolveServerJoinPayload({
+  fastify,
+  serverIdentity = fastify?.serverIdentity,
+  preferDecorated = true,
+  defaultHost = DEFAULT_PUBLIC_HOST,
+  defaultPortCandidates = DEFAULT_PORT_FALLBACKS,
+} = {}) {
+  if (preferDecorated && fastify && typeof fastify === "object") {
+    const decorated = fastify.serverJoinPayload;
+    const decoratedPort = pickPort(decorated?.port);
+    if (
+      decorated &&
+      typeof decorated === "object" &&
+      typeof decorated.host === "string" &&
+      decorated.host.trim() &&
+      decoratedPort &&
+      typeof decorated.pubkey === "string" &&
+      decorated.pubkey.trim()
+    ) {
+      return {
+        host: decorated.host,
+        port: decoratedPort,
+        pubkey: decorated.pubkey,
+      };
+    }
+  }
+
+  const pubkey = serverIdentity?.publicKeyBase64Url;
+  if (typeof pubkey !== "string" || !pubkey.trim()) {
+    return null;
+  }
+
+  const { host, port } = resolveServerAddress({
+    fastify,
+    defaultHost,
+    defaultPortCandidates,
+  });
+
+  if (!host || !port) {
+    return null;
+  }
+
+  return { host, port, pubkey };
+}
+
 function makeServerIdentifier(host, port) {
   return `${host}:${port}`;
 }
@@ -274,4 +405,6 @@ module.exports = {
   connectToIntroducers,
   makeServerIdentifier,
   hostsMatch,
+  resolveServerAddress,
+  resolveServerJoinPayload,
 };

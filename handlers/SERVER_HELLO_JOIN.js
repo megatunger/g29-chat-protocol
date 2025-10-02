@@ -2,7 +2,10 @@
 
 const defaultRegistry = require("../utilities/connection-registry");
 const { sendError, sendServerMessage } = require("../utilities/message-utils");
-const { connectToIntroducers } = require("../utilities/server-join");
+const {
+  connectToIntroducers,
+  resolveServerAddress,
+} = require("../utilities/server-join");
 const { PrismaClient } = require("../generated/prisma");
 const { subMinutes } = require("date-fns");
 const { listServerOrigins } = require("../utilities/connection-registry");
@@ -187,8 +190,9 @@ module.exports = async function SERVER_HELLO_JOIN(props) {
       );
     }
 
-    const { host: serverHost, port: serverPort } =
-      resolveServerAddress(fastify);
+    const { host: serverHost, port: serverPort } = resolveServerAddress({
+      fastify,
+    });
     const clients = activeUsers.map((user) => ({
       user_id: user.userID,
       host: serverHost,
@@ -239,64 +243,3 @@ module.exports = async function SERVER_HELLO_JOIN(props) {
     sendError(socket, "INTERNAL_ERROR", error.message);
   }
 };
-function resolveServerAddress(fastify) {
-  const addressInfo =
-    typeof fastify?.server?.address === "function"
-      ? fastify.server.address()
-      : null;
-
-  const defaultHost = process.env.SERVER_PUBLIC_HOST || "localhost";
-  const defaultPortCandidates = [
-    Number.parseInt(process.env.SERVER_PUBLIC_PORT || "", 10),
-    Number.parseInt(process.env.PORT || "", 10),
-    3000,
-  ];
-
-  const pickPort = (value) => {
-    const parsed = Number.parseInt(value, 10);
-    return Number.isInteger(parsed) && parsed > 0 && parsed <= 65535
-      ? parsed
-      : undefined;
-  };
-
-  let host = defaultHost;
-  let port =
-    defaultPortCandidates.find((candidate) => pickPort(candidate)) || 3000;
-  port = pickPort(port) || 3000;
-
-  if (typeof addressInfo === "string") {
-    try {
-      const url = new URL(addressInfo);
-      const candidateHost = url.hostname;
-      const candidatePort = pickPort(url.port);
-      if (
-        candidateHost &&
-        !candidateHost.includes("::") &&
-        candidateHost !== "0.0.0.0"
-      ) {
-        host = candidateHost;
-      }
-      if (candidatePort) {
-        port = candidatePort;
-      }
-    } catch (_error) {
-      // Ignore malformed address strings and fall back to defaults.
-    }
-  } else if (addressInfo && typeof addressInfo === "object") {
-    const candidateHost = addressInfo.address;
-    const candidatePort = pickPort(addressInfo.port);
-    if (
-      typeof candidateHost === "string" &&
-      candidateHost &&
-      !candidateHost.includes("::") &&
-      candidateHost !== "0.0.0.0"
-    ) {
-      host = candidateHost;
-    }
-    if (candidatePort) {
-      port = candidatePort;
-    }
-  }
-
-  return { host, port };
-}

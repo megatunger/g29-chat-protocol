@@ -4,89 +4,14 @@ const { send, sendError } = require("../utilities/message-utils");
 const { PrismaClient } = require("../generated/prisma");
 const { verifyStoredUserSignature } = require("../utilities/signature-utils");
 const defaultRegistry = require("../utilities/connection-registry");
-const { connectToIntroducers } = require("../utilities/server-join");
+const {
+  connectToIntroducers,
+  resolveServerJoinPayload,
+} = require("../utilities/server-join");
 const { subMinutes } = require("date-fns");
 
 const prisma = new PrismaClient();
 const FALLBACK_SERVER_ID = process.env.SERVER_ID || "G29_SERVER";
-
-function resolveJoinPayload(fastify) {
-  if (!fastify || typeof fastify !== "object") {
-    return null;
-  }
-
-  const decorated = fastify.serverJoinPayload;
-  if (
-    decorated &&
-    typeof decorated === "object" &&
-    typeof decorated.host === "string" &&
-    decorated.host.trim() &&
-    Number.isInteger(decorated.port) &&
-    decorated.port > 0 &&
-    typeof decorated.pubkey === "string" &&
-    decorated.pubkey.trim()
-  ) {
-    return decorated;
-  }
-
-  const addressInfo =
-    typeof fastify.server?.address === "function"
-      ? fastify.server.address()
-      : null;
-
-  const defaultHost = process.env.SERVER_PUBLIC_HOST || "localhost";
-  let host = defaultHost;
-
-  if (typeof addressInfo === "string") {
-    try {
-      const url = new URL(addressInfo);
-      if (
-        typeof url.hostname === "string" &&
-        url.hostname &&
-        !url.hostname.includes("::") &&
-        url.hostname !== "0.0.0.0"
-      ) {
-        host = url.hostname;
-      }
-    } catch (_error) {
-      // Ignore malformed address strings and fall back to defaults.
-    }
-  } else if (addressInfo && typeof addressInfo === "object") {
-    const candidate = addressInfo.address;
-    if (
-      typeof candidate === "string" &&
-      candidate &&
-      !candidate.includes("::") &&
-      candidate !== "0.0.0.0"
-    ) {
-      host = candidate;
-    }
-  }
-
-  const portCandidates = [
-    Number.parseInt(process.env.SERVER_PUBLIC_PORT || "", 10),
-    typeof addressInfo?.port === "number" ? addressInfo.port : null,
-    Number.parseInt(addressInfo?.port, 10),
-    Number.parseInt(process.env.PORT || "", 10),
-    3000,
-  ];
-
-  const port =
-    portCandidates.find(
-      (value) => Number.isInteger(value) && value > 0 && value <= 65535,
-    ) ?? 3000;
-
-  const pubkey = fastify.serverIdentity?.publicKeyBase64Url;
-  if (typeof pubkey !== "string" || !pubkey.trim()) {
-    return null;
-  }
-
-  return {
-    host,
-    port,
-    pubkey,
-  };
-}
 
 module.exports = async function LIST(props) {
   const {
@@ -118,7 +43,7 @@ module.exports = async function LIST(props) {
     if (fastify) {
       const bootstrapServers = fastify.bootstrapServers || [];
       if (Array.isArray(bootstrapServers) && bootstrapServers.length > 0) {
-        const joinPayload = resolveJoinPayload(fastify);
+        const joinPayload = resolveServerJoinPayload({ fastify });
         if (joinPayload) {
           try {
             await connectToIntroducers({

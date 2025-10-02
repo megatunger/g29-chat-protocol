@@ -6,7 +6,10 @@ const path = require("node:path");
 const AutoLoad = require("@fastify/autoload");
 const { loadBootstrapServers } = require("./utilities/bootstrap-loader");
 const connectionRegistry = require("./utilities/connection-registry");
-const { connectToIntroducers } = require("./utilities/server-join");
+const {
+  connectToIntroducers,
+  resolveServerJoinPayload,
+} = require("./utilities/server-join");
 const {
   resolveServerKeyOptions,
   loadServerKeyPair,
@@ -62,65 +65,17 @@ module.exports = async function (fastify, opts) {
       return;
     }
 
-    const addressInfo =
-      typeof fastify.server?.address === "function"
-        ? fastify.server.address()
-        : null;
+    const joinPayload = resolveServerJoinPayload({
+      fastify,
+      serverIdentity,
+      preferDecorated: false,
+    });
 
-    const parsedAddress = (() => {
-      if (!addressInfo) {
-        return null;
-      }
-
-      if (typeof addressInfo === "string") {
-        try {
-          const url = new URL(addressInfo);
-          return {
-            host: url.hostname,
-            port: Number.parseInt(url.port, 10),
-          };
-        } catch (_error) {
-          return null;
-        }
-      }
-
-      if (typeof addressInfo === "object") {
-        return {
-          host: addressInfo.address || "localhost",
-          port: addressInfo.port,
-        };
-      }
-
-      return null;
-    })();
-
-    const defaultHost = process.env.SERVER_PUBLIC_HOST || "localhost";
-    const hostCandidate = parsedAddress?.host;
-    const host =
-      hostCandidate &&
-      !hostCandidate.includes("::") &&
-      hostCandidate !== "0.0.0.0"
-        ? hostCandidate
-        : defaultHost;
-
-    const portCandidates = [
-      Number.parseInt(process.env.SERVER_PUBLIC_PORT || "", 10),
-      typeof parsedAddress?.port === "number" ? parsedAddress.port : null,
-      Number.parseInt(parsedAddress?.port, 10),
-      Number.parseInt(process.env.PORT || "", 10),
-      3000,
-    ];
-
-    const port =
-      portCandidates.find(
-        (value) => Number.isInteger(value) && value > 0 && value <= 65535,
-      ) ?? 3000;
-
-    const joinPayload = {
-      host,
-      port,
-      pubkey: serverIdentity.publicKeyBase64Url,
-    };
+    if (!joinPayload) {
+      fastify.log.error("Unable to resolve join payload; skipping introducers");
+      finalize();
+      return;
+    }
 
     fastify.serverJoinPayload = joinPayload;
 
