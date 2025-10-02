@@ -205,14 +205,10 @@ function upsertExternalUsers(serverId, clients, { timestamp } = {}) {
       ? timestamp
       : Date.now();
 
+  let serverIndex = null;
   if (normalizedServerId) {
-    const existing = serverExternalUserIndex.get(normalizedServerId) || [];
-    for (const userId of existing) {
-      if (!clients.some((client) => client?.user_id === userId)) {
-        externalUsers.delete(userId);
-      }
-    }
-    serverExternalUserIndex.set(normalizedServerId, []);
+    const existing = serverExternalUserIndex.get(normalizedServerId);
+    serverIndex = Array.isArray(existing) ? [...existing] : [];
   }
 
   for (const client of clients) {
@@ -248,10 +244,14 @@ function upsertExternalUsers(serverId, clients, { timestamp } = {}) {
     externalUsers.set(userId, record);
 
     if (normalizedServerId) {
-      const index = serverExternalUserIndex.get(normalizedServerId) || [];
-      index.push(userId);
-      serverExternalUserIndex.set(normalizedServerId, index);
+      if (!serverIndex.includes(userId)) {
+        serverIndex.push(userId);
+      }
     }
+  }
+
+  if (normalizedServerId) {
+    serverExternalUserIndex.set(normalizedServerId, serverIndex);
   }
 
   return listExternalUsers();
