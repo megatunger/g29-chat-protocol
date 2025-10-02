@@ -3,9 +3,11 @@
 const defaultRegistry = require("../utilities/connection-registry");
 const { send, sendError } = require("../utilities/message-utils");
 const { connectToIntroducers } = require("../utilities/server-join");
+const { PrismaClient } = require("../generated/prisma");
 
 const FALLBACK_SERVER_ID = process.env.SERVER_ID || "G29_SERVER";
 let lastConnectionReport = null;
+const prisma = new PrismaClient();
 
 function normalizePort(value) {
   if (typeof value === "number") {
@@ -121,27 +123,102 @@ module.exports = async function SERVER_HELLO_JOIN(props) {
       );
     }
 
+    let activeUsers = [];
+    try {
+      activeUsers = await prisma.client.findMany({
+        where: { isActive: true },
+        select: { userID: true, pubkey: true },
+        orderBy: { ts: "desc" },
+      });
+    } catch (error) {
+      fastify.log.error(error, "Failed to load active users for SERVER_WELCOME");
+    }
+
+    const { host: serverHost, port: serverPort } = resolveServerAddress(fastify);
+    const clients = activeUsers.map((user) => ({
+      user_id: user.userID,
+      host: serverHost,
+      port: serverPort,
+      pubkey: user.pubkey,
+    }));
+
+    const assignedId =
+      data?.payload?.requestedId ||
+      data?.from ||
+      `${joinPayload.host}:${joinPayload.port}`;
+
     send(socket, {
       type: "SERVER_WELCOME",
       from: localServerId,
       to: data?.from || localServerId,
       payload: {
-        assignment: {
-          id:
-            data?.payload?.requestedId ||
-            data?.from ||
-            `${joinPayload.host}:${joinPayload.port}`,
-        },
-        servers: {
-          attempted: bootstrapServers.length,
-          connected: connectedServers,
-          failed: failedServers,
-          skipped: skippedServers,
-        },
+        assigned_id: assignedId,
+        clients,
       },
+      sig: "",
     });
   } catch (error) {
     fastify.log.error(error, "SERVER_HELLO_JOIN failed");
     sendError(socket, "INTERNAL_ERROR", error.message);
   }
 };
+function resolveServerAddress(fastify) {
+  const addressInfo =
+    typeof fastify?.server?.address === "function"
+      ? fastify.server.address()
+      : null;
+
+  const defaultHost = process.env.SERVER_PUBLIC_HOST || "localhost";
+  const defaultPortCandidates = [
+    Number.parseInt(process.env.SERVER_PUBLIC_PORT || "", 10),
+    Number.parseInt(process.env.PORT || "", 10),
+    3000,
+  ];
+
+  const pickPort = (value) => {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isInteger(parsed) && parsed > 0 && parsed <= 65535
+      ? parsed
+      : undefined;
+  };
+
+  let host = defaultHost;
+  let port = defaultPortCandidates.find((candidate) => pickPort(candidate)) || 3000;
+  port = pickPort(port) || 3000;
+
+  if (typeof addressInfo === "string") {
+    try {
+      const url = new URL(addressInfo);
+      const candidateHost = url.hostname;
+      const candidatePort = pickPort(url.port);
+      if (
+        candidateHost &&
+        !candidateHost.includes("::") &&
+        candidateHost !== "0.0.0.0"
+      ) {
+        host = candidateHost;
+      }
+      if (candidatePort) {
+        port = candidatePort;
+      }
+    } catch (_error) {
+      // Ignore malformed address strings and fall back to defaults.
+    }
+  } else if (addressInfo && typeof addressInfo === "object") {
+    const candidateHost = addressInfo.address;
+    const candidatePort = pickPort(addressInfo.port);
+    if (
+      typeof candidateHost === "string" &&
+      candidateHost &&
+      !candidateHost.includes("::") &&
+      candidateHost !== "0.0.0.0"
+    ) {
+      host = candidateHost;
+    }
+    if (candidatePort) {
+      port = candidatePort;
+    }
+  }
+
+  return { host, port };
+}
