@@ -1,7 +1,56 @@
-const { constants, createPublicKey, createVerify } = require("crypto");
+const { constants, createPublicKey, createSign, createVerify } = require("crypto");
 const { decode } = require("base64url-universal");
 
 const fromBase64Url = (value) => Buffer.from(decode(value));
+const toBase64Url = (buffer) =>
+  Buffer.from(buffer)
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/u, "");
+
+function normalizePayload(payload) {
+  if (payload === undefined || payload === null) {
+    return "";
+  }
+
+  if (typeof payload === "string") {
+    return payload;
+  }
+
+  try {
+    return JSON.stringify(payload);
+  } catch (_error) {
+    return "";
+  }
+}
+
+function signPayload({ privateKey, payload }) {
+  if (!privateKey) {
+    return "";
+  }
+
+  const payloadString = normalizePayload(payload);
+  if (!payloadString) {
+    return "";
+  }
+
+  try {
+    const signer = createSign("sha256");
+    signer.update(Buffer.from(payloadString, "utf8"));
+    signer.end();
+
+    const signature = signer.sign({
+      key: privateKey,
+      padding: constants.RSA_PKCS1_PSS_PADDING,
+      saltLength: constants.RSA_PSS_SALTLEN_DIGEST,
+    });
+
+    return toBase64Url(signature);
+  } catch (_error) {
+    return "";
+  }
+}
 
 /**
  * Verify an RSASSA-PSS (SHA-256) signature produced by the frontend ChatCrypto helper.
@@ -43,4 +92,5 @@ function verifyPayloadSignature({ publicKey, payload, signature }) {
 
 module.exports = {
   verifyPayloadSignature,
+  signPayload,
 };

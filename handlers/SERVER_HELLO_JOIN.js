@@ -1,7 +1,7 @@
 "use strict";
 
 const defaultRegistry = require("../utilities/connection-registry");
-const { send, sendError } = require("../utilities/message-utils");
+const { sendError, sendServerMessage } = require("../utilities/message-utils");
 const { connectToIntroducers } = require("../utilities/server-join");
 const { PrismaClient } = require("../generated/prisma");
 
@@ -82,6 +82,7 @@ module.exports = async function SERVER_HELLO_JOIN(props) {
       joinPayload,
       connectionRegistry,
       logger: fastify.log,
+      serverIdentity: fastify.serverIdentity,
       from:
         data?.from || fastify.serverIdentity?.keyId || process.env.SERVER_ID || FALLBACK_SERVER_ID,
     });
@@ -147,15 +148,18 @@ module.exports = async function SERVER_HELLO_JOIN(props) {
       data?.from ||
       `${joinPayload.host}:${joinPayload.port}`;
 
-    send(socket, {
-      type: "SERVER_WELCOME",
-      from: localServerId,
-      to: data?.from || localServerId,
-      payload: {
-        assigned_id: assignedId,
-        clients,
+    sendServerMessage({
+      socket,
+      serverIdentity: fastify.serverIdentity,
+      message: {
+        type: "SERVER_WELCOME",
+        from: localServerId,
+        to: data?.from || localServerId,
+        payload: {
+          assigned_id: assignedId,
+          clients,
+        },
       },
-      sig: "",
     });
   } catch (error) {
     fastify.log.error(error, "SERVER_HELLO_JOIN failed");

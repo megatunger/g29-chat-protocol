@@ -128,6 +128,7 @@ module.exports = async function (fastify, opts) {
         connectionRegistry,
         logger: fastify.log,
         from: process.env.SERVER_ID || "G29_SERVER",
+        serverIdentity,
       })
         .then((result) => {
           fastify.log.info(

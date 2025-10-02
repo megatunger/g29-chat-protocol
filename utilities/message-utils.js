@@ -1,5 +1,7 @@
 "use strict";
 
+const { signPayload } = require("./crypto");
+
 function toUtf8String(raw) {
   if (Buffer.isBuffer(raw)) {
     return raw.toString("utf8");
@@ -75,6 +77,33 @@ function send(socket, message) {
   );
 }
 
+function prepareServerMessageEnvelope({ message, serverIdentity }) {
+  if (!message || typeof message !== "object") {
+    throw new Error("prepareServerMessageEnvelope requires a message object");
+  }
+
+  const payload = message.payload ?? {};
+  let signature = "";
+
+  if (serverIdentity?.privateKey) {
+    signature = signPayload({ privateKey: serverIdentity.privateKey, payload });
+  }
+
+  return {
+    ...message,
+    sig: signature,
+  };
+}
+
+function sendServerMessage({ socket, message, serverIdentity }) {
+  const envelope = prepareServerMessageEnvelope({
+    message,
+    serverIdentity,
+  });
+
+  send(socket, envelope);
+}
+
 function sendError(socket, code, message) {
   send(socket, {
     type: "ERROR",
@@ -90,4 +119,6 @@ module.exports = {
   parseMessage,
   send,
   sendError,
+  prepareServerMessageEnvelope,
+  sendServerMessage,
 };
