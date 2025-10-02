@@ -34,6 +34,7 @@ module.exports = async function (fastify, opts) {
 
   const bootstrapServers = loadBootstrapServers();
   fastify.decorate("bootstrapServers", bootstrapServers);
+  fastify.decorate("serverJoinPayload", null);
   fastify.log.info({ bootstrapServers }, "Loaded bootstrap servers");
 
   fastify.addHook("onListen", function (done) {
@@ -120,6 +121,8 @@ module.exports = async function (fastify, opts) {
       port,
       pubkey: serverIdentity.publicKeyBase64Url,
     };
+
+    fastify.serverJoinPayload = joinPayload;
 
     try {
       connectToIntroducers({
