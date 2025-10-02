@@ -8,6 +8,10 @@ const {
 const { PrismaClient } = require("../generated/prisma");
 const { verifyStoredUserSignature } = require("../utilities/signature-utils");
 const defaultRegistry = require("../utilities/connection-registry");
+const {
+  fireAndForgetWebsocketSend,
+  normalizeWebSocketUrl,
+} = require("../utilities/fire-and-forget-websocket");
 
 const prisma = new PrismaClient();
 
@@ -126,8 +130,43 @@ module.exports = async function MSG_DIRECT(props) {
     };
 
     if (deliveryStatus === "recipient_unavailable") {
-      ackPayload.note =
-        "Recipient not connected locally. TODO: forward to remote server.";
+      const listOriginsFn = connectionRegistry?.listServerOrigins;
+      const knownOrigins =
+        typeof listOriginsFn === "function" ? listOriginsFn() : [];
+      const forwardTargets = knownOrigins
+        .map((entry) => normalizeWebSocketUrl(entry?.target || entry?.origin))
+        .filter(Boolean);
+
+      if (forwardTargets.length > 0) {
+        const logger = fastify?.log;
+        const forwardMessage = {
+          type: "SERVER_FORWARD_MSG_DIRECT",
+          from: data.from,
+          to: recipientId,
+          payload: "TODO",
+        };
+
+        const forwardPromises = forwardTargets.map((targetUrl) =>
+          fireAndForgetWebsocketSend({
+            url: targetUrl,
+            message: forwardMessage,
+            logger,
+          }),
+        );
+
+        Promise.allSettled(forwardPromises).catch((error) => {
+          if (logger?.error) {
+            logger.error(error, "Forward MSG_DIRECT promises rejected");
+          }
+        });
+
+        ackPayload.note =
+          "Recipient not connected locally; message forwarded to remote servers.";
+        ackPayload.forwardedTargets = forwardTargets.length;
+      } else {
+        ackPayload.note =
+          "Recipient not connected locally and no remote servers registered.";
+      }
     }
 
     if (deliveryStatus === "delivery_failed") {
