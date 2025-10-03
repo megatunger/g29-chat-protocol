@@ -18,6 +18,7 @@ import { formatDistance } from "date-fns";
 import useProtocolRequest from "@/services/useProtocolRequest";
 import { useNewKey } from "@/contexts/NewKeyContext";
 import useChatTransforms from "@/hooks/use-chat-transforms";
+import useFileTransfer from "@/hooks/use-file-transfer";
 import { publicChannelKeyManager } from "@/lib/group-keys";
 
 type ChatDirection = "incoming" | "outgoing";
@@ -36,6 +37,28 @@ type ChatContextValue = {
 
 const ChatContext = createContext<ChatContextValue | null>(null);
 
+const formatFileSize = (bytes: number): string => {
+  if (!Number.isFinite(bytes) || bytes < 0) {
+    return `${bytes}`;
+  }
+
+  const units = ["B", "KB", "MB", "GB", "TB"] as const;
+  let value = bytes;
+  let unitIndex = 0;
+
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+
+  const formatter = new Intl.NumberFormat(undefined, {
+    minimumFractionDigits: value < 10 && unitIndex > 0 ? 1 : 0,
+    maximumFractionDigits: value < 10 && unitIndex > 0 ? 1 : 0,
+  });
+
+  return `${formatter.format(value)} ${units[unitIndex]}`;
+};
+
 const ChatProvider = ({ children }: PropsWithChildren) => {
   const { serverUUID, lastJsonMessage } = useNetwork();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -45,6 +68,7 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
   const { storedKey } = useNewKey();
   const { createDirectMessagePayload, decryptDirectMessagePayload } =
     useChatTransforms();
+  const { sendFile } = useFileTransfer();
 
   const appendMessage = useCallback(
     (direction: ChatDirection, content: ReactNode, ts: number) => {
@@ -334,6 +358,101 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
           }
         }
 
+        if (trimmed.startsWith("/file ")) {
+          appendMessage("outgoing", trimmed, new Date().getTime());
+
+          const match = trimmed.match(/^\/file\s+(\S+)\s+(\S+)$/);
+
+          if (!match) {
+            appendMessage(
+              "incoming",
+              <span className="text-red-500">
+                Usage: /file &lt;user&gt; &lt;blob-url&gt;
+              </span>,
+              Date.now(),
+            );
+            return false;
+          }
+
+          const [, rawRecipientId, blobUrl] = match;
+          const isPublicFileTransfer = rawRecipientId === "all";
+          const recipientId = isPublicFileTransfer ? "public" : rawRecipientId;
+
+          try {
+            let recipientPublicKey: string | undefined;
+
+            if (!isPublicFileTransfer) {
+              const listResponse = await sendListAllUsers({});
+              const users = Array.isArray(listResponse?.payload?.users)
+                ? listResponse.payload.users
+                : [];
+
+              const recipient = users.find(
+                (user) => user?.userID === rawRecipientId,
+              );
+
+              if (!recipient) {
+                appendMessage(
+                  "incoming",
+                  <span className="text-red-500">
+                    User <strong>{rawRecipientId}</strong> was not found. Use
+                    /list to see online users.
+                  </span>,
+                  Date.now(),
+                );
+                return false;
+              }
+
+              if (typeof recipient?.pubkey !== "string" || !recipient.pubkey) {
+                appendMessage(
+                  "incoming",
+                  <span className="text-red-500">
+                    Missing public key for <strong>{rawRecipientId}</strong>.
+                    Unable to initiate file transfer.
+                  </span>,
+                  Date.now(),
+                );
+                return false;
+              }
+
+              recipientPublicKey = recipient.pubkey;
+            }
+
+            const result = await sendFile({
+              senderId: storedKey.keyId,
+              recipientId,
+              recipientPublicKey,
+              fileUrl: blobUrl,
+              mode: isPublicFileTransfer ? "public" : "dm",
+            });
+
+            appendMessage(
+              "incoming",
+              <span className="text-emerald-600">
+                Sent <strong>{result.fileName}</strong> ({formatFileSize(result.fileSize)})
+                to <strong>{
+                  isPublicFileTransfer ? "public channel" : rawRecipientId
+                }</strong> in {result.chunkCount} chunk
+                {result.chunkCount === 1 ? "" : "s"}.
+              </span>,
+              Date.now(),
+            );
+
+            return true;
+          } catch (error) {
+            const message =
+              error instanceof Error
+                ? error.message
+                : "Failed to send file";
+            appendMessage(
+              "incoming",
+              <span className="text-red-500">{message}</span>,
+              Date.now(),
+            );
+            return false;
+          }
+        }
+
         appendMessage("outgoing", trimmed, new Date().getTime());
         return true;
       } catch (error) {
@@ -348,6 +467,7 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
       serverUUID,
       storedKey,
       hasEncryptedKey,
+      sendFile,
     ],
   );
 
