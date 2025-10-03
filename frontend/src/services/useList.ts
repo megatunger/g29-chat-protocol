@@ -15,14 +15,10 @@ export type useListResponse = {
       userID: string;
       version: string;
       ts: string;
-      pubkey: string | null;
-      isActive?: boolean;
-      isOnline?: boolean;
+      pubkey: string;
     }>;
     total: number;
     message: string;
-    totalOnline?: number;
-    totalDisabled?: number;
   };
   ts: number;
 };
@@ -39,18 +35,22 @@ function useList() {
       options?: useSendAndExpectOptions;
     }
   >({
-    mutationFn: async ({ options }): Promise<useListResponse> => {
+    mutationFn: async ({ options }): Promise<void> => {
       const { expectedType = "USER_LIST", timeoutMs, validate } = options ?? {};
       const validator =
         typeof validate === "function"
           ? validate
           : (message: unknown): boolean => {
-              if (!message || typeof message !== "object") return false;
+              if (!message || typeof message !== "object") {
+                return false;
+              }
+
               const typed = message as Record<string, unknown>;
-              return typed.type === expectedType;
+              const responseType = typed.type;
+              return responseType === expectedType;
             };
 
-      const response = await sendAndExpect<useListResponse>(
+      return sendAndExpect<void>(
         {
           type: "LIST",
           from: storedKey?.keyId,
@@ -65,8 +65,6 @@ function useList() {
           failOnMismatch: true,
         },
       );
-
-      return response;
     },
   });
 }
