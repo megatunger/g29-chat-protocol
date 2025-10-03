@@ -11,6 +11,9 @@ const PUBLIC_CHANNEL_KEY_SHARE = require("./PUBLIC_CHANNEL_KEY_SHARE");
 const SERVER_HELLO_JOIN = require("./SERVER_HELLO_JOIN");
 const SERVER_WELCOME = require("./SERVER_WELCOME");
 const SERVER_DELIVER = require("./SERVER_DELIVER");
+const FILE_START = require("./FILE_START");
+const FILE_CHUNK = require("./FILE_CHUNK");
+const FILE_END = require("./FILE_END");
 
 const handlers = new Map([
   ["ping", ping],
@@ -24,6 +27,9 @@ const handlers = new Map([
   ["SERVER_HELLO_JOIN", SERVER_HELLO_JOIN],
   ["SERVER_WELCOME", SERVER_WELCOME],
   ["SERVER_DELIVER", SERVER_DELIVER],
+  ["FILE_START", FILE_START],
+  ["FILE_CHUNK", FILE_CHUNK],
+  ["FILE_END", FILE_END],
 ]);
 
 function getHandler(type) {
