@@ -8,8 +8,10 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
+import { decode as decodeBase64Url } from "base64url-universal";
 import { useAuthStore } from "@/stores/auth.store";
 import { useNetwork } from "@/contexts/NetworkContext";
 import useList from "@/services/useList";
@@ -62,6 +64,22 @@ const formatFileSize = (bytes: number): string => {
 const ChatProvider = ({ children }: PropsWithChildren) => {
   const { serverUUID, lastJsonMessage } = useNetwork();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const activeFileTransfersRef = useRef<
+    Map<
+      string,
+      {
+        senderId: string;
+        fileName: string;
+        fileSize: number;
+        sha256: string;
+        mode: string;
+        chunks: Uint8Array[];
+        receivedBytes: number;
+        receivedChunks: number;
+        startedAt: number;
+      }
+    >
+  >(new Map());
   const hasEncryptedKey = useAuthStore((state) => !!state.encryptedKey);
   const { mutateAsync: sendListAllUsers } = useList();
   const { sendAndExpect } = useProtocolRequest();
@@ -429,10 +447,12 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
             appendMessage(
               "incoming",
               <span className="text-emerald-600">
-                Sent <strong>{result.fileName}</strong> ({formatFileSize(result.fileSize)})
-                to <strong>{
-                  isPublicFileTransfer ? "public channel" : rawRecipientId
-                }</strong> in {result.chunkCount} chunk
+                Sent <strong>{result.fileName}</strong> (
+                {formatFileSize(result.fileSize)}) to{" "}
+                <strong>
+                  {isPublicFileTransfer ? "public channel" : rawRecipientId}
+                </strong>{" "}
+                in {result.chunkCount} chunk
                 {result.chunkCount === 1 ? "" : "s"}.
               </span>,
               Date.now(),
@@ -441,9 +461,7 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
             return true;
           } catch (error) {
             const message =
-              error instanceof Error
-                ? error.message
-                : "Failed to send file";
+              error instanceof Error ? error.message : "Failed to send file";
             appendMessage(
               "incoming",
               <span className="text-red-500">{message}</span>,
@@ -660,6 +678,198 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
 
     void displayMessage();
   }, [appendMessage, decryptDirectMessagePayload, lastJsonMessage, storedKey]);
+
+  useEffect(() => {
+    if (!lastJsonMessage) {
+      return;
+    }
+
+    const message = lastJsonMessage as {
+      type?: string;
+      from?: string;
+      payload?: Record<string, unknown> | null;
+    };
+
+    if (!message?.type || !message.payload) {
+      return;
+    }
+
+    if (message.type === "FILE_START") {
+      const fileId =
+        typeof message.payload.file_id === "string"
+          ? message.payload.file_id
+          : null;
+
+      if (!fileId) {
+        return;
+      }
+
+      if (!activeFileTransfersRef.current.has(fileId)) {
+        const senderId =
+          typeof message.from === "string" ? message.from : "unknown";
+        const fileName =
+          typeof message.payload.name === "string"
+            ? message.payload.name
+            : "unknown";
+        const fileSize =
+          typeof message.payload.size === "number" ? message.payload.size : 0;
+        const sha256 =
+          typeof message.payload.sha256 === "string"
+            ? message.payload.sha256
+            : "";
+        const mode =
+          typeof message.payload.mode === "string"
+            ? message.payload.mode
+            : "dm";
+
+        activeFileTransfersRef.current.set(fileId, {
+          senderId,
+          fileName,
+          fileSize,
+          sha256,
+          mode,
+          chunks: [],
+          receivedBytes: 0,
+          receivedChunks: 0,
+          startedAt: Date.now(),
+        });
+      }
+
+      return;
+    }
+
+    if (message.type === "FILE_CHUNK") {
+      const fileId =
+        typeof message.payload.file_id === "string"
+          ? message.payload.file_id
+          : null;
+      const chunkIndex =
+        typeof message.payload.index === "number"
+          ? message.payload.index
+          : null;
+      const ciphertext =
+        typeof message.payload.ciphertext === "string"
+          ? message.payload.ciphertext
+          : null;
+
+      if (!fileId || chunkIndex === null || chunkIndex < 0 || !ciphertext) {
+        return;
+      }
+
+      const transfer = activeFileTransfersRef.current.get(fileId);
+
+      if (!transfer) {
+        return;
+      }
+
+      try {
+        const chunkData = decodeBase64Url(ciphertext);
+        const previousChunk = transfer.chunks[chunkIndex];
+        transfer.chunks[chunkIndex] = chunkData;
+
+        if (previousChunk instanceof Uint8Array) {
+          transfer.receivedBytes += chunkData.length - previousChunk.length;
+        } else {
+          transfer.receivedBytes += chunkData.length;
+          transfer.receivedChunks += 1;
+        }
+      } catch (error) {
+        console.error("Failed to decode FILE_CHUNK payload", error);
+      }
+
+      return;
+    }
+
+    if (message.type === "FILE_END") {
+      const fileId =
+        typeof message.payload.file_id === "string"
+          ? message.payload.file_id
+          : null;
+
+      if (!fileId) {
+        return;
+      }
+
+      const transfer = activeFileTransfersRef.current.get(fileId);
+
+      if (!transfer) {
+        return;
+      }
+
+      if (typeof message.payload.name === "string") {
+        transfer.fileName = message.payload.name;
+      }
+
+      if (typeof message.payload.size === "number") {
+        transfer.fileSize = message.payload.size;
+      }
+
+      if (typeof message.payload.sha256 === "string") {
+        transfer.sha256 = message.payload.sha256;
+      }
+
+      if (typeof message.payload.mode === "string") {
+        transfer.mode = message.payload.mode;
+      }
+
+      if (typeof message.payload.chunks === "number") {
+        transfer.receivedChunks = Math.max(
+          transfer.receivedChunks,
+          message.payload.chunks,
+        );
+      }
+
+      activeFileTransfersRef.current.delete(fileId);
+
+      const blobParts = transfer.chunks.filter(
+        (chunk): chunk is Uint8Array => chunk instanceof Uint8Array,
+      );
+      const blob = new Blob(blobParts, {
+        type: "application/octet-stream",
+      });
+      const downloadUrl = URL.createObjectURL(blob);
+
+      appendMessage(
+        "incoming",
+        <div>
+          <div className="font-semibold text-sm text-slate-800">
+            📁 File from {transfer.senderId}
+          </div>
+          <div className="mt-1 text-slate-900">
+            <a
+              className="text-blue-600 underline"
+              href={downloadUrl}
+              download={transfer.fileName}
+            >
+              Download {transfer.fileName}
+            </a>{" "}
+            ({formatFileSize(transfer.fileSize)})
+          </div>
+          <div className="mt-1 text-xs text-slate-500">
+            Received {transfer.receivedChunks} chunk
+            {transfer.receivedChunks === 1 ? "" : "s"} totaling{" "}
+            {formatFileSize(transfer.receivedBytes)}.
+          </div>
+          <div className="mt-1 text-xs text-slate-500">
+            Mode: {transfer.mode === "public" ? "public broadcast" : "direct"}
+          </div>
+          {transfer.sha256 ? (
+            <div className="mt-1 text-[11px] text-slate-500">
+              SHA-256:{" "}
+              <code className="font-mono break-all">{transfer.sha256}</code>
+            </div>
+          ) : null}
+        </div>,
+        Date.now(),
+      );
+
+      window.setTimeout(() => {
+        URL.revokeObjectURL(downloadUrl);
+      }, 60_000);
+
+      return;
+    }
+  }, [appendMessage, lastJsonMessage]);
 
   const value = useMemo<ChatContextValue>(
     () => ({
