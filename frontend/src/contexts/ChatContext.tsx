@@ -374,45 +374,48 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
             return false;
           }
 
-          const [, recipientId, blobUrl] = match;
+          const [, rawRecipientId, blobUrl] = match;
+          const isPublicFileTransfer = rawRecipientId === "all";
+          const recipientId = isPublicFileTransfer ? "public" : rawRecipientId;
 
           try {
-            const listResponse = await sendListAllUsers({});
-            const users = Array.isArray(listResponse?.payload?.users)
-              ? listResponse.payload.users
-              : [];
+            let recipientPublicKey: string | undefined;
 
-            const recipient = users.find(
-              (user) => user?.userID === recipientId,
-            );
+            if (!isPublicFileTransfer) {
+              const listResponse = await sendListAllUsers({});
+              const users = Array.isArray(listResponse?.payload?.users)
+                ? listResponse.payload.users
+                : [];
 
-            if (!recipient) {
-              appendMessage(
-                "incoming",
-                <span className="text-red-500">
-                  User <strong>{recipientId}</strong> was not found. Use /list
-                  to see online users.
-                </span>,
-                Date.now(),
+              const recipient = users.find(
+                (user) => user?.userID === rawRecipientId,
               );
-              return false;
-            }
 
-            const recipientPublicKey =
-              typeof recipient?.pubkey === "string" && recipient.pubkey
-                ? recipient.pubkey
-                : null;
+              if (!recipient) {
+                appendMessage(
+                  "incoming",
+                  <span className="text-red-500">
+                    User <strong>{rawRecipientId}</strong> was not found. Use
+                    /list to see online users.
+                  </span>,
+                  Date.now(),
+                );
+                return false;
+              }
 
-            if (!recipientPublicKey) {
-              appendMessage(
-                "incoming",
-                <span className="text-red-500">
-                  Missing public key for <strong>{recipientId}</strong>. Unable
-                  to initiate file transfer.
-                </span>,
-                Date.now(),
-              );
-              return false;
+              if (typeof recipient?.pubkey !== "string" || !recipient.pubkey) {
+                appendMessage(
+                  "incoming",
+                  <span className="text-red-500">
+                    Missing public key for <strong>{rawRecipientId}</strong>.
+                    Unable to initiate file transfer.
+                  </span>,
+                  Date.now(),
+                );
+                return false;
+              }
+
+              recipientPublicKey = recipient.pubkey;
             }
 
             const result = await sendFile({
@@ -420,13 +423,16 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
               recipientId,
               recipientPublicKey,
               fileUrl: blobUrl,
+              mode: isPublicFileTransfer ? "public" : "dm",
             });
 
             appendMessage(
               "incoming",
               <span className="text-emerald-600">
                 Sent <strong>{result.fileName}</strong> ({formatFileSize(result.fileSize)})
-                to <strong>{recipientId}</strong> in {result.chunkCount} chunk
+                to <strong>{
+                  isPublicFileTransfer ? "public channel" : rawRecipientId
+                }</strong> in {result.chunkCount} chunk
                 {result.chunkCount === 1 ? "" : "s"}.
               </span>,
               Date.now(),

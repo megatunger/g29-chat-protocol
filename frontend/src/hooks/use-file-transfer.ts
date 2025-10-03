@@ -32,7 +32,7 @@ type FileTransferMode = "dm" | "public";
 type SendFileTransferOptions = {
   senderId: string;
   recipientId: string;
-  recipientPublicKey: string;
+  recipientPublicKey?: string;
   fileUrl: string;
   mode?: FileTransferMode;
 };
@@ -64,8 +64,8 @@ const useFileTransfer = () => {
         throw new Error("Recipient identifier is required for file transfer");
       }
 
-      if (!recipientPublicKey) {
-        throw new Error("Recipient public key is required for file transfer");
+      if (mode === "dm" && !recipientPublicKey) {
+        throw new Error("Recipient public key is required for direct file transfer");
       }
 
       const file = getFileForBlobUrl(fileUrl);
@@ -78,10 +78,12 @@ const useFileTransfer = () => {
       const shaDigest = await crypto.subtle.digest("SHA-256", fileBuffer);
       const sha256 = toHex(shaDigest);
 
+      const targetId = mode === "public" ? "public" : recipientId;
+
       await sendJsonMessage({
         type: "FILE_START",
         from: senderId,
-        to: recipientId,
+        to: targetId,
         payload: {
           file_id: fileId,
           name: file.name,
@@ -105,7 +107,7 @@ const useFileTransfer = () => {
         await sendJsonMessage({
           type: "FILE_CHUNK",
           from: senderId,
-          to: recipientId,
+          to: targetId,
           payload: {
             file_id: fileId,
             index: chunkCount,
@@ -119,7 +121,7 @@ const useFileTransfer = () => {
       await sendJsonMessage({
         type: "FILE_END",
         from: senderId,
-        to: recipientId,
+        to: targetId,
         payload: {
           file_id: fileId,
         },
