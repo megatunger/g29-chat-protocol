@@ -1,9 +1,7 @@
-import { v4 as uuidv4 } from "uuid";
-
 export const clientVersion = "g29-v1";
 
 export const generateUserID = (userID: string) => {
-  return `${userID}_${uuidv4().substring(0, 3)}`;
+  return `${userID}`;
 };
 
 export const DEFAULT_EXPECTED_TYPE = "ACK";

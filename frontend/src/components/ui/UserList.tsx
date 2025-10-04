@@ -50,9 +50,17 @@ export default function UserList({ users = [] as User[] }) {
           minWidth: 320,
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 8,
+          }}
+        >
           <div style={{ fontWeight: 700 }}>
-            Found {totalActive} active users and {totalDisabled} disabled users (total {total})
+            Found {totalActive} active users and {totalDisabled} disabled users
+            (total {total})
           </div>
 
           <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -81,8 +89,13 @@ export default function UserList({ users = [] as User[] }) {
               }}
             >
               <div>
-                <div style={{ fontWeight: 700 }}>{u.userID}</div>
-                <div style={{ fontSize: 12, color: "#666" }}>{formatWhen(u.ts)}</div>
+                <div
+                  style={{ fontWeight: 700 }}
+                  dangerouslySetInnerHTML={{ __html: u.userID }}
+                />
+                <div style={{ fontSize: 12, color: "#666" }}>
+                  {formatWhen(u.ts)}
+                </div>
               </div>
 
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -97,7 +110,9 @@ export default function UserList({ users = [] as User[] }) {
             </li>
           ))}
 
-          {visible.length === 0 && <li style={{ color: "#666", padding: 8 }}>No users to show</li>}
+          {visible.length === 0 && (
+            <li style={{ color: "#666", padding: 8 }}>No users to show</li>
+          )}
         </ul>
       </div>
     </div>
