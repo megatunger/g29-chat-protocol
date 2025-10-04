@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 import { DEFAULT_SERVER_HOST } from "@/constants/endpoint";
+import type { PasswordVerifier } from "@/lib/password-crypto";
 
 export type PersistedEncryptedKey = {
   publicKey: string;
@@ -10,7 +11,8 @@ export type PersistedEncryptedKey = {
   salt: string;
   iv: string;
   version: number;
-  encryptedPassword: string | null;
+  passwordVerifier: PasswordVerifier | null;
+  encryptedPassword?: string | null;
 };
 
 type AuthState = {
