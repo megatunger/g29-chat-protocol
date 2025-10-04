@@ -4,6 +4,9 @@ const { send, sendError } = require("../utilities/message-utils");
 const { PrismaClient } = require("../generated/prisma");
 const defaultRegistry = require("../utilities/connection-registry");
 const { verifyStoredUserSignature } = require("../utilities/signature-utils");
+const {
+  getPublicChannelPublicKey,
+} = require("../utilities/public-channel-keys");
 
 const prisma = new PrismaClient();
 
@@ -78,7 +81,7 @@ module.exports = async function USER_HELLO(props) {
       from: "server",
       to: data.from,
       payload: {
-        wrapped_key: "placeholder_wrapped_key_for_public_channel",
+        wrapped_key: getPublicChannelPublicKey(),
         channel_id: "public",
         version: 1,
       },
