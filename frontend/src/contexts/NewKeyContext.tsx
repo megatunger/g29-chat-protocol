@@ -10,7 +10,11 @@ import {
 } from "react";
 import { ChatCrypto, type ChatKeyPair } from "@/lib/crypto";
 import { decryptPrivateKey, encryptPrivateKey } from "@/lib/key-encryption";
-import { decryptPassword, encryptPassword } from "@/lib/password-crypto";
+import {
+  hashPassword,
+  verifyPassword,
+  type PasswordVerifier,
+} from "@/lib/password-crypto";
 import { useAuthStore } from "@/stores/auth.store";
 
 type NewKeyContextValue = {
@@ -82,10 +86,11 @@ const NewKeyProvider = ({ children }: PropsWithChildren) => {
         setIsProcessing(true);
         setError(null);
 
-        const [encryptedPrivateKey, encryptedPassword] = await Promise.all([
-          encryptPrivateKey(key.privateKey, password),
-          encryptPassword(password),
-        ]);
+        const encryptedPrivateKey = await encryptPrivateKey(
+          key.privateKey,
+          password,
+        );
+        const passwordVerifier = await hashPassword(password);
 
         setEncryptedKey({
           publicKey: key.publicKey,
@@ -94,7 +99,7 @@ const NewKeyProvider = ({ children }: PropsWithChildren) => {
           salt: encryptedPrivateKey.salt,
           iv: encryptedPrivateKey.iv,
           version: encryptedPrivateKey.version,
-          encryptedPassword,
+          passwordVerifier,
         });
         setDecryptedPrivateKey(key.privateKey);
         setLoggedIn(true);
@@ -132,19 +137,16 @@ const NewKeyProvider = ({ children }: PropsWithChildren) => {
         setIsProcessing(true);
         setError(null);
 
-        if (currentEncrypted.encryptedPassword) {
-          try {
-            const storedPassword = await decryptPassword(
-              currentEncrypted.encryptedPassword,
-            );
-            if (storedPassword !== password) {
-              setError("Incorrect password");
-              setDecryptedPrivateKey(null);
-              setLoggedIn(false);
-              return null;
-            }
-          } catch (passwordError) {
-            console.error("Failed to decrypt stored password:", passwordError);
+        const passwordVerifier: PasswordVerifier | null =
+          currentEncrypted.passwordVerifier ?? null;
+
+        if (passwordVerifier) {
+          const isMatch = await verifyPassword(password, passwordVerifier);
+          if (!isMatch) {
+            setError("Incorrect password");
+            setDecryptedPrivateKey(null);
+            setLoggedIn(false);
+            return null;
           }
         }
 
