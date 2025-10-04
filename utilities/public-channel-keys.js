@@ -2,6 +2,13 @@
 
 const { generateKeyPairSync } = require("node:crypto");
 
+const toBase64Url = (buffer) =>
+  Buffer.from(buffer)
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/u, "");
+
 let publicChannelKeyPair;
 
 function initializePublicChannelKeys() {
@@ -11,14 +18,6 @@ function initializePublicChannelKeys() {
 
   publicChannelKeyPair = generateKeyPairSync("rsa", {
     modulusLength: 4096,
-    publicKeyEncoding: {
-      type: "spki",
-      format: "pem",
-    },
-    privateKeyEncoding: {
-      type: "pkcs8",
-      format: "pem",
-    },
   });
 
   return publicChannelKeyPair;
@@ -33,7 +32,12 @@ function getPublicChannelKeyPair() {
 }
 
 function getPublicChannelPublicKey() {
-  return getPublicChannelKeyPair().publicKey;
+  const publicKeyDer = getPublicChannelKeyPair().publicKey.export({
+    type: "spki",
+    format: "der",
+  });
+
+  return toBase64Url(publicKeyDer);
 }
 
 module.exports = {
