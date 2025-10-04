@@ -114,3 +114,9 @@ yarn dev
 ├── test/                   # Node --test suites
 └── README.md               # This guide
 ```
+
+Critical Folders / Module:
+
+- `/handlers`: All the handlers in the backend for each type of messages
+- `ChatContext.tsx`: All the handlers relating to messaging on frontend
+- `*-crypto, *encryption`: Related to encryption

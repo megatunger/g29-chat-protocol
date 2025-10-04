@@ -14,6 +14,10 @@ const {
   resolveServerKeyOptions,
   loadServerKeyPair,
 } = require("./utilities/server-keys");
+const {
+  initializePublicChannelKeys,
+  getPublicChannelPublicKey,
+} = require("./utilities/public-channel-keys");
 
 // Pass --options via CLI arguments in command to enable these options.
 const options = {};
@@ -34,6 +38,11 @@ module.exports = async function (fastify, opts) {
     fastify.log.error(error, "Unable to load server key pair");
     throw error;
   }
+
+  const publicChannelKeyPair = initializePublicChannelKeys();
+  fastify.decorate("publicChannelKeyPair", publicChannelKeyPair);
+  fastify.decorate("publicChannelPublicKey", getPublicChannelPublicKey());
+  fastify.log.info("Generated ephemeral public channel key pair");
 
   const bootstrapServers = loadBootstrapServers();
   fastify.decorate("bootstrapServers", bootstrapServers);
