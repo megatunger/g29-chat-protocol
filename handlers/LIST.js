@@ -69,67 +69,108 @@ module.exports = async function LIST(props) {
       }
     }
 
-    const activeUsers = await prisma.client.findMany({
-      where: {
-        isActive: true,
-        ts: {
-          gte: subMinutes(new Date().getTime(), 10),
-        },
-      },
+    // fetch all clients from DB (include isActive + ts)
+    const dbUsers = await prisma.client.findMany({
       select: {
         userID: true,
         version: true,
         ts: true,
         pubkey: true,
+        isActive: true,
       },
       orderBy: {
         ts: "desc",
       },
     });
 
-    console.log(`Found ${activeUsers.length} ACTIVE users`);
-
+    // list external users (from in-memory registry)
     let externalUsers = [];
     try {
       if (typeof connectionRegistry.listExternalUsers === "function") {
-        externalUsers = connectionRegistry.listExternalUsers();
+        externalUsers = connectionRegistry.listExternalUsers() || [];
       }
     } catch (error) {
       console.warn("Failed to list external users", error);
     }
 
-    const seenUserIds = new Set(activeUsers.map((user) => user.userID));
-    const normalizedExternalUsers = externalUsers
-      .filter((user) => user && typeof user.userID === "string")
-      .filter((user) => {
-        if (seenUserIds.has(user.userID)) {
-          return false;
-        }
-        seenUserIds.add(user.userID);
-        return true;
-      })
-      .map((user) => ({
-        userID: user.userID,
-        version: user.version || "external",
-        ts:
-          typeof user.ts === "number"
-            ? new Date(user.ts)
-            : user.ts || new Date(),
-        pubkey: user.pubkey || null,
-        host: user.host || null,
-        port: user.port || null,
-        sourceServer: user.sourceServer || null,
-      }));
+    // build a combined deduped list: prefer DB record when available
+    const seen = new Set();
+    const cutoff = subMinutes(new Date(), 10);
+    const combined = [];
 
-    const combinedUsers = [...activeUsers, ...normalizedExternalUsers];
+    // add DB users first
+    for (const u of dbUsers) {
+      const uid = u.userID;
+      if (!uid || seen.has(uid)) continue;
+      seen.add(uid);
+      const tsDate = u.ts instanceof Date ? u.ts : new Date(u.ts || Date.now());
+      const isOnline = Boolean(u.isActive) && tsDate >= cutoff;
+      combined.push({
+        userID: uid,
+        version: u.version || "db",
+        ts: tsDate,
+        pubkey: u.pubkey || null,
+        isActive: Boolean(u.isActive),
+        isOnline,
+        source: "db",
+      });
+    }
+
+    // add external users that were not in DB
+    for (const eu of externalUsers) {
+      if (!eu || typeof eu.userID !== "string") continue;
+      if (seen.has(eu.userID)) continue;
+      seen.add(eu.userID);
+      const tsDate =
+        typeof eu.ts === "number" ? new Date(eu.ts) : eu.ts ? new Date(eu.ts) : new Date();
+      const isActiveFlag = typeof eu.isActive === "boolean" ? eu.isActive : true;
+      const isOnline = Boolean(isActiveFlag) && tsDate >= cutoff;
+      combined.push({
+        userID: eu.userID,
+        version: eu.version || "external",
+        ts: tsDate,
+        pubkey: eu.pubkey || null,
+        host: eu.host || null,
+        port: eu.port || null,
+        sourceServer: eu.sourceServer || null,
+        isActive: isActiveFlag,
+        isOnline,
+        source: "external",
+      });
+    }
+
+    // totals
+    const total = combined.length;
+    const totalOnline = combined.filter((x) => x.isOnline).length;
+    const totalDisabled = combined.filter((x) => !x.isActive).length;
+
+    console.log(`Found ${totalOnline} online, ${totalDisabled} disabled, total ${total}`);
+
+    // prepare serializable users (ensure ts is string and booleans are explicit)
+    const serializableUsers = combined.map((u) => ({
+      userID: u.userID,
+      version: u.version,
+      ts: u.ts instanceof Date ? u.ts.toISOString() : new Date(u.ts).toISOString(),
+      pubkey: u.pubkey || null,
+      host: u.host || null,
+      port: u.port || null,
+      sourceServer: u.sourceServer || null,
+      isActive: Boolean(u.isActive),
+      isOnline: Boolean(u.isOnline),
+      source: u.source || null,
+    }));
+
+    // send a single users array with flags: isActive and isOnline
     send(socket, {
       type: "USER_LIST",
       from: "server",
       to: data.from,
       payload: {
-        users: combinedUsers,
-        total: combinedUsers.length,
-        message: `Found ${combinedUsers.length} active users online`,
+        users: serializableUsers,
+        total,
+        totalOnline,
+        totalDisabled,
+        message: `Found ${totalOnline} active users and ${totalDisabled} disabled users (total ${total})`,
       },
     });
   } catch (error) {
@@ -140,7 +181,7 @@ module.exports = async function LIST(props) {
       to: data.from,
       payload: {
         code: "DATABASE_ERROR",
-        detail: "Failed to retrieve users from database",
+        detail: "Failed to retrieve users from database: " + (error && error.message),
       },
     });
   }
