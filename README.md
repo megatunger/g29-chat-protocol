@@ -4,6 +4,8 @@ This repository contains the reference implementation of the Secure Overlay Chat
 combines a Fastify-based backend (WebSocket) with a Next.js front-end, Prisma ORM, and SQLite storage to deliver
 an end-to-end encrypted messaging.
 
+Github Repository: [https://github.com/megatunger/g29-chat-protocol](https://github.com/megatunger/g29-chat-protocol)
+
 ---
 
 ## Main Contact Points:
