@@ -17,7 +17,7 @@ async function verifyStoredUserSignature({
   signature,
 }) {
   if (!signature) {
-    return { valid: true, user: null };
+    return { valid: false, user: null };
   }
 
   const user = await prismaClient.client.findFirst({
