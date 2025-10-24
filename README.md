@@ -15,8 +15,8 @@ Github Repository: [https://github.com/megatunger/g29-chat-protocol](https://git
 
 For any issues on running the code, please reach out to:
 
-1. **Son Tung Hoang: a1984077@adelaide.edu.au. Phone number: 0461269613 (Whatsapp, Text messages)**
-2. Varuna Lingam. Phone number: 61481165397 (Whatsapp, Text messages)
+1. Son Tung Hoang
+2. Varuna Lingam
 
 ## Group Members:
 
