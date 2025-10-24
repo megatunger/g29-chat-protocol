@@ -39,6 +39,20 @@ type ChatContextValue = {
 
 const ChatContext = createContext<ChatContextValue | null>(null);
 
+const MAX_FILE_CHUNKS = 1_000;
+
+type ActiveFileTransfer = {
+  senderId: string;
+  fileName: string;
+  fileSize: number;
+  sha256: string;
+  mode: string;
+  chunks: Uint8Array[];
+  receivedBytes: number;
+  receivedChunks: number;
+  startedAt: number;
+};
+
 const formatFileSize = (bytes: number): string => {
   if (!Number.isFinite(bytes) || bytes < 0) {
     return `${bytes}`;
@@ -64,22 +78,9 @@ const formatFileSize = (bytes: number): string => {
 const ChatProvider = ({ children }: PropsWithChildren) => {
   const { serverUUID, lastJsonMessage } = useNetwork();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const activeFileTransfersRef = useRef<
-    Map<
-      string,
-      {
-        senderId: string;
-        fileName: string;
-        fileSize: number;
-        sha256: string;
-        mode: string;
-        chunks: Uint8Array[];
-        receivedBytes: number;
-        receivedChunks: number;
-        startedAt: number;
-      }
-    >
-  >(new Map());
+  const activeFileTransfersRef = useRef<Map<string, ActiveFileTransfer>>(
+    new Map(),
+  );
   const hasEncryptedKey = useAuthStore((state) => !!state.encryptedKey);
   const { mutateAsync: sendListAllUsers } = useList();
   const { sendAndExpect } = useProtocolRequest();
@@ -762,9 +763,44 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
         return;
       }
 
+      const abortTransfer = (reason: string) => {
+        console.warn(
+          "Discarding file transfer due to chunk limit:",
+          fileId,
+          reason,
+        );
+
+        appendMessage(
+          "incoming",
+          <span className="text-red-500">
+            Discarded file transfer from <strong>{transfer.senderId}</strong>
+            {transfer.fileName ? ` (${transfer.fileName})` : ""}: {reason}
+          </span>,
+          Date.now(),
+        );
+
+        activeFileTransfersRef.current.delete(fileId);
+      };
+
+      if (chunkIndex >= MAX_FILE_CHUNKS) {
+        abortTransfer(
+          `chunk index ${chunkIndex} exceeds maximum of ${MAX_FILE_CHUNKS}`,
+        );
+        return;
+      }
+
+      const previousChunk = transfer.chunks[chunkIndex];
+      const isNewChunk = !(previousChunk instanceof Uint8Array);
+
+      if (isNewChunk && transfer.receivedChunks >= MAX_FILE_CHUNKS) {
+        abortTransfer(
+          `file exceeded maximum of ${MAX_FILE_CHUNKS} chunks`,
+        );
+        return;
+      }
+
       try {
         const chunkData = decodeBase64Url(ciphertext);
-        const previousChunk = transfer.chunks[chunkIndex];
         transfer.chunks[chunkIndex] = chunkData;
 
         if (previousChunk instanceof Uint8Array) {
@@ -813,9 +849,14 @@ const ChatProvider = ({ children }: PropsWithChildren) => {
       }
 
       if (typeof message.payload.chunks === "number") {
+        const declaredChunks = Math.min(
+          message.payload.chunks,
+          MAX_FILE_CHUNKS,
+        );
+
         transfer.receivedChunks = Math.max(
           transfer.receivedChunks,
-          message.payload.chunks,
+          declaredChunks,
         );
       }
 

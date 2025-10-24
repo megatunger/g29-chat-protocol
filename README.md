@@ -1,5 +1,8 @@
 # Secure Overlay Chat Protocol – Group 29 Implementation
 
+![ui.png](ui.png)
+![ui2.png](ui2.png)
+
 This repository contains the reference implementation of the Secure Overlay Chat Protocol (SOCP) v1.3 for Group 29. It
 combines a Fastify-based backend (WebSocket) with a Next.js front-end, Prisma ORM, and SQLite storage to deliver
 an end-to-end encrypted messaging.
